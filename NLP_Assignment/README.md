@@ -1,4 +1,4 @@
-# NLP Group Assignment 1 — Question 1, Parts 1–2
+# NLP Group Assignment 1 — Question 1, Parts 1–3
 
 **Part 1 — Word segmentation.** A trigram word language model per corpus, plus a
 dynamic-programming (Viterbi) decoder that recovers word boundaries from
@@ -10,6 +10,12 @@ tags with the same kind of dynamic program — a Viterbi lattice whose state is
 the last two tags. It is evaluated twice: on gold words (tagging alone) and on
 the Part 1 segmenter's own output (the pipeline the brief asks for).
 
+**Part 3 — Morphology-aware tagging.** The same tagger over a tagset refined
+with gender and number (`NOUN-Fem-Sg`, `ADJ-Masc-Pl`), which lets the transition
+model learn agreement — and lets us ask *"did the model reproduce grammatical
+agreement?"* rather than only *"was the tag right?"*. Spanish has the FEATS to
+support this; Brown does not, which makes English an explicit null result.
+
 ## Setup
 
 ```bash
@@ -17,6 +23,8 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -c "import nltk; [nltk.download(p) for p in ['brown','universal_tagset','punkt','treebank','gutenberg']]"
 git clone --depth 1 https://github.com/UniversalDependencies/UD_Spanish-GSD.git data/UD_Spanish-GSD
+# optional, for the Part 3 German comparison:
+# git clone --depth 1 https://github.com/UniversalDependencies/UD_German-GSD.git data/UD_German-GSD
 ```
 
 Verify the data layer and print the corpus statistics used in the report:
@@ -29,11 +37,11 @@ Verify the data layer and print the corpus statistics used in the report:
 
 | Path | Purpose |
 | --- | --- |
-| [q1/data.py](q1/data.py) | Corpus loading, normalisation, splits, Brown→Penn map — the `Token`/`Sentence`/`Corpus` types |
+| [q1/data.py](q1/data.py) | Corpus loading, normalisation, splits, Brown→Penn map, UD FEATS → `NOUN-Fem-Sg` tags — the `Token`/`Sentence`/`Corpus` types |
 | [q1/lm.py](q1/lm.py) | Trigram word LM (Witten-Bell / Kneser-Ney / add-k) + character LM for unknowns |
 | [q1/segment.py](q1/segment.py) | `DecoderConfig` and the DP/Viterbi segmentation decoder |
 | [q1/tagger.py](q1/tagger.py) | Part 2: trigram HMM tagger (emissions, deleted-interpolation transitions, suffix model for unknowns) + most-frequent-tag baseline |
-| [q1/evaluate.py](q1/evaluate.py) | Scoring — segmentation (token/boundary F1), tagging (known/unknown accuracy), end-to-end with error attribution |
+| [q1/evaluate.py](q1/evaluate.py) | Scoring — segmentation (token/boundary F1), tagging (known/unknown accuracy), end-to-end with error attribution, agreement reproduction |
 | [scripts/inspect_q1_data.py](scripts/inspect_q1_data.py) | Invariant checks + corpus statistics |
 | [scripts/test_q1_models.py](scripts/test_q1_models.py) | Correctness tests (LM normalisation, decoder, scoring) |
 | [scripts/run_q1.py](scripts/run_q1.py) | Train → tune on dev → evaluate on test → persist |
@@ -82,18 +90,61 @@ Verify the data layer and print the corpus statistics used in the report:
   *genuine* (right span, wrong tag) — the two halves of the pipeline can then be
   judged separately.
 
+## Q1 Part 3 modelling decisions
+
+* **The tagset.** POS plus gender and number, in the brief's notation:
+  `NOUN-Fem-Sg`, `ADJ-Masc-Pl`. Only the two agreement-carrying features are used
+  by default (`MORPH_FEATURES`) — every extra feature multiplies the tagset and
+  divides the counts. A token with no relevant FEATS keeps its bare tag.
+* **No model changes.** The tagger is agnostic about what a tag means, so Part 3
+  is entirely a data decision. Agreement is learned by the ordinary transition
+  model: `P(ADJ-Fem-Sg | DET-Fem-Sg, NOUN-Fem-Sg)` is just estimated from more
+  specific counts than `P(ADJ | DET, NOUN)`. The run prints that probability
+  against its disagreeing counterpart, so the learned pattern is read out of the
+  model rather than inferred from its output.
+* **Fair comparison.** Accuracy on the refined label set is *not* comparable with
+  Part 2 — it is a harder decision over more labels. Both taggers are therefore
+  also projected to coarse tags (`coarse_tag`) and scored on that identical
+  decision. The morphology-aware tagger inherits Part 2's selected order, so the
+  tagset is the only thing that differs.
+* **Agreement is scored separately from accuracy.** Over adjacent gold pairs that
+  agree in the gold, `score_agreement` reports both *reproduced* (the model's two
+  tags agree with each other) and *correct* (they also carry the right values).
+  A pair tagged Masc/Masc where the gold is Fem/Fem did propagate a consistent
+  gender, and collapsing that into plain accuracy would hide it; reporting only
+  the first would let a tag-everything-Masc-Sg model look perfect. On this corpus
+  the two columns come out identical — the emission model pins the value from the
+  word form, so the model never propagates a *consistently wrong* gender.
+* **Agreement is reported on gold words and end to end.** Passing
+  `predicted_words` aligns the tags to the gold by character span and keeps a
+  pair whose words the segmenter never recovered *in the denominator*, counted as
+  not reproduced — end to end that agreement really was lost. The gap between the
+  two numbers is the segmenter's contribution, and it is large.
+* **English is a null result about the corpus, not the language.** Brown carries
+  no FEATS, so the refined tagset is identical to the plain one and there is no
+  agreement to measure. The run says so explicitly instead of reporting a
+  meaningless comparison. A UD English treebank would be needed to ask the
+  question.
+* **German.** `--languages German` runs the same Part 3 analysis on UD German-GSD
+  (clone it into `data/` first); German adds case to the agreement picture.
+
 ## Running
 
 ```bash
 .venv/bin/python scripts/inspect_q1_data.py   # data-layer checks + corpus statistics
 .venv/bin/python scripts/test_q1_models.py    # model correctness tests
-.venv/bin/python scripts/run_q1.py            # full Parts 1-2 run, both languages
+.venv/bin/python scripts/run_q1.py            # full Parts 1-3 run, both languages
 .venv/bin/python scripts/run_q1.py --fast     # small samples, for iteration
+.venv/bin/python scripts/run_q1.py --languages German   # needs data/UD_German-GSD
 ```
 
 Results land in [models/q1_results.json](models/q1_results.json). The
 comparative report is [REPORT_Q1.md](REPORT_Q1.md); it was written against the
-full Q1 pipeline, so its sections on segmentation, tagging and end-to-end error
-attribution match what is here, while its sections on morphology-aware tagsets
-and the joint segment-and-tag decoder describe work not yet re-added to this
-tree.
+full Q1 pipeline. Its segmentation, tagging and error-attribution numbers
+reproduce here to within ~0.2 pp. Its agreement section is measured on the
+*pipeline* and on gender alone (88.37% over 1,479 pairs); scored the same way,
+this tree gives 88.22% over 1,511 pairs. Scored on gold words and on both
+features — the run's headline — it is 96.46%, because segmentation errors, not
+tagging errors, account for most of the difference. The run prints both modes so
+the two are never confused. Its sections on the joint segment-and-tag decoder
+describe work not yet re-added to this tree.

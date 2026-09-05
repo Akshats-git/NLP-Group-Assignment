@@ -471,6 +471,16 @@ class MostFrequentTagger:
         return [self.tag(words) for words in sentences]
 
 
-def tagged_pairs(sentences: Iterable) -> list[list[tuple[str, str]]]:
-    """``Sentence`` objects -> the ``(word, tag)`` lists the taggers train on."""
-    return [list(zip(s.words, s.tags)) for s in sentences]
+def tagged_pairs(sentences: Iterable, morph: bool = False) -> list[list[tuple[str, str]]]:
+    """``Sentence`` objects -> the ``(word, tag)`` lists the taggers train on.
+
+    ``morph=True`` supplies the Part 3 tags (``NOUN-Fem-Sg``) instead of the
+    plain POS tags.  Nothing in the model changes: the tagger is agnostic about
+    what a tag means, so refining the tagset is entirely a data decision, and
+    the agreement patterns the brief describes are learned by the ordinary
+    transition model -- P(ADJ-Fem-Sg | ..., NOUN-Fem-Sg) is simply estimated
+    from more specific counts than P(ADJ | ..., NOUN).
+    """
+    return [
+        list(zip(s.words, s.morph_tags if morph else s.tags)) for s in sentences
+    ]

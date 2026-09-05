@@ -23,10 +23,20 @@ from q1.data import (
     Sentence,
     Token,
     brown_to_penn,
+    coarse_tag,
+    make_morph_tag,
     normalise_brown_tag,
     normalise_form,
+    parse_feats,
+    tag_features,
 )
-from q1.evaluate import score_pipeline, score_segmentation, score_tagging
+from q1.evaluate import (
+    agreement_bias,
+    score_agreement,
+    score_pipeline,
+    score_segmentation,
+    score_tagging,
+)
 from q1.lm import CharLM, NgramLM
 from q1.segment import DecoderConfig, decode_segmentation, spans_from_words
 from q1.tagger import (
@@ -256,6 +266,169 @@ def test_pipeline_scoring() -> None:
           "a fully correct pipeline output scores 1.0")
 
 
+# --------------------------------------------------------------------------
+# Part 3 -- morphology-aware tagging
+# --------------------------------------------------------------------------
+FEM_SG = "Gender=Fem|Number=Sing"
+MASC_SG = "Gender=Masc|Number=Sing"
+FEM_PL = "Gender=Fem|Number=Plur"
+
+
+def spanish_sentences() -> list[Sentence]:
+    """A toy Spanish-shaped corpus: agreement is the only regularity in it."""
+
+    def token(form: str, upos: str, feats: str = "") -> Token:
+        return Token(form, upos, parse_feats(feats))
+
+    raw = [
+        [token("la", "DET", FEM_SG), token("casa", "NOUN", FEM_SG),
+         token("roja", "ADJ", FEM_SG)],
+        [token("el", "DET", MASC_SG), token("libro", "NOUN", MASC_SG),
+         token("rojo", "ADJ", MASC_SG)],
+        [token("las", "DET", FEM_PL), token("casas", "NOUN", FEM_PL),
+         token("rojas", "ADJ", FEM_PL)],
+        [token("la", "DET", FEM_SG), token("mesa", "NOUN", FEM_SG),
+         token("blanca", "ADJ", FEM_SG)],
+        [token("el", "DET", MASC_SG), token("gato", "NOUN", MASC_SG),
+         token("blanco", "ADJ", MASC_SG)],
+        # "grande" marks number but not gender -- the underspecified case that
+        # must not be counted as a disagreement.
+        [token("la", "DET", FEM_SG), token("casa", "NOUN", FEM_SG),
+         token("grande", "ADJ", "Number=Sing")],
+        [token("el", "DET", MASC_SG), token("libro", "NOUN", MASC_SG),
+         token("grande", "ADJ", "Number=Sing")],
+    ]
+    return [
+        Sentence.from_tokens(row, sent_id=f"toy-es-{i}")
+        for i, row in enumerate(raw)
+        for _ in range(30)
+    ]
+
+
+def test_morph_tags() -> None:
+    feats = parse_feats("Gender=Fem|Number=Sing")
+    check(feats == (("Gender", "Fem"), ("Number", "Sing")),
+          "FEATS parse to a sorted (feature, value) tuple")
+    check(parse_feats("_") == (), "an empty FEATS field gives no features")
+    check(parse_feats("Gender=Fem,Masc")[0] == ("Gender", "Fem"),
+          "an ambiguous FEATS value keeps the first alternative")
+    check(Token("casa", "NOUN", feats).morph_tag == "NOUN-Fem-Sg",
+          "the tag uses the brief's notation: NOUN-Fem-Sg")
+    check(make_morph_tag("ADJ", parse_feats("Gender=Masc|Number=Plur")) == "ADJ-Masc-Pl",
+          "ADJ-Masc-Pl is built the same way")
+    check(Token("dog", "NOUN").morph_tag == "NOUN",
+          "a token with no FEATS keeps its bare POS tag (the Brown case)")
+    check(coarse_tag("NOUN-Fem-Sg") == "NOUN" and coarse_tag("NOUN") == "NOUN",
+          "projection back to coarse tags is exact")
+    check(coarse_tag("-LRB-") == "-LRB-",
+          "Penn bracket tags survive projection unchanged")
+    check(tag_features("NOUN-Fem-Sg") == {"Gender": "Fem", "Number": "Sg"},
+          "features can be read back out of a predicted tag")
+
+
+def test_morph_corpus_views() -> None:
+    sentences = spanish_sentences()
+    check(sentences[0].morph_tags == ("DET-Fem-Sg", "NOUN-Fem-Sg", "ADJ-Fem-Sg"),
+          "a sentence exposes its morphology-aware tags")
+    check(sentences[0].tags == ("DET", "NOUN", "ADJ"),
+          "the plain tags are unchanged by Part 3")
+    check(sentences[0].has_morphology, "a UD-style sentence reports morphology")
+    check(not Sentence.from_tokens([Token("dog", "NOUN")]).has_morphology,
+          "a Brown-style sentence reports none")
+    check(len({t for s in sentences for t in s.morph_tags})
+          > len({t for s in sentences for t in s.tags}),
+          "refining the tagset genuinely splits it")
+
+
+def test_agreement_is_learned() -> None:
+    """The brief's claim, checked in the transition table itself."""
+    tagger = HMMTagger().fit(tagged_pairs(spanish_sentences(), morph=True))
+    context = ("DET-Fem-Sg", "NOUN-Fem-Sg")
+    check(tagger.transition_prob("ADJ-Fem-Sg", context) >
+          tagger.transition_prob("ADJ-Masc-Sg", context),
+          "a feminine noun predicts a feminine adjective over a masculine one")
+    check(tagger.transition_prob("ADJ-Fem-Sg", ("DET-Fem-Pl", "NOUN-Fem-Pl")) <
+          tagger.transition_prob("ADJ-Fem-Pl", ("DET-Fem-Pl", "NOUN-Fem-Pl")),
+          "number agreement is learned as well as gender")
+    check(abs(tagger.check_normalised(context) - 1.0) < 1e-6,
+          "the refined transition model is still normalised")
+
+
+def test_agreement_bias() -> None:
+    """The transition model must prefer agreement, and by a wide margin."""
+    tagger = HMMTagger().fit(tagged_pairs(spanish_sentences(), morph=True))
+    rows = agreement_bias(tagger)
+    check(bool(rows), "a bias row is produced per fully specified noun tag")
+    for row in rows:
+        check(row.agreeing > row.clashing,
+              f"{' '.join(row.context)}: agreeing beats clashing "
+              f"({row.agreeing:.4f} vs {row.clashing:.4f})")
+        check(row.ratio > 5.0,
+              f"{' '.join(row.context)}: the margin is large, not marginal "
+              f"({row.ratio:.0f}x)")
+    check(any(row.underspecified > row.clashing for row in rows),
+          "a gender-unmarked adjective ('grande') is counted as underspecified, "
+          "not as a disagreement")
+
+
+def test_agreement_scoring() -> None:
+    sentences = spanish_sentences()[:1]          # la casa roja, all Fem Sg
+    perfect = score_agreement(sentences, [("DET-Fem-Sg", "NOUN-Fem-Sg", "ADJ-Fem-Sg")])
+    check(perfect.n_pairs == 2, "both adjacent pairs agree in the gold")
+    check(perfect.reproduced_rate == 1.0 and perfect.correct_rate == 1.0,
+          "a correct tagging reproduces agreement")
+
+    broken = score_agreement(sentences, [("DET-Fem-Sg", "NOUN-Fem-Sg", "ADJ-Masc-Sg")])
+    check(broken.n_reproduced == 1,
+          "a gender clash on NOUN+ADJ is counted as agreement not reproduced")
+
+    consistent = score_agreement(
+        sentences, [("DET-Masc-Sg", "NOUN-Masc-Sg", "ADJ-Masc-Sg")]
+    )
+    check(consistent.reproduced_rate == 1.0 and consistent.correct_rate == 0.0,
+          "consistently wrong gender still reproduces agreement, but is not correct")
+
+    stripped = score_agreement(sentences, [("DET", "NOUN", "ADJ")])
+    check(stripped.n_reproduced == 0,
+          "a tagger that cannot express gender reproduces no agreement")
+
+
+def test_agreement_pipeline_mode() -> None:
+    """A pair the segmenter destroyed lost its agreement, and must be counted."""
+    sentences = spanish_sentences()[:1]           # la casa roja, all Fem Sg
+    gold_tags = ("DET-Fem-Sg", "NOUN-Fem-Sg", "ADJ-Fem-Sg")
+    perfect = score_agreement(
+        sentences, [gold_tags], predicted_words=[("la", "casa", "roja")]
+    )
+    check(perfect.n_pairs == 2 and perfect.reproduced_rate == 1.0,
+          "a perfectly segmented sentence scores as it does on gold words")
+    check(perfect.n_unrecovered == 0, "nothing was lost to segmentation")
+
+    merged = score_agreement(
+        sentences, [("DET-Fem-Sg", "NOUN-Fem-Sg")],
+        predicted_words=[("la", "casaroja")],
+    )
+    check(merged.n_pairs == 2, "the gold pairs stay in the denominator")
+    check(merged.n_unrecovered == 2 and merged.n_reproduced == 0,
+          "a merged token loses both pairs it took part in")
+    check(merged.by_context["DET+NOUN"][1] == 0,
+          "the loss is attributed to the context it happened in")
+
+
+def test_agreement_ignores_non_agreeing_pairs() -> None:
+    """Only pairs that agree in the gold can be scored for agreement."""
+    tokens = [
+        Token("la", "DET", parse_feats(FEM_SG)),
+        Token("casa", "NOUN", parse_feats(FEM_SG)),
+        Token("rojos", "ADJ", parse_feats("Gender=Masc|Number=Plur")),
+    ]
+    sentence = Sentence.from_tokens(tokens)
+    scores = score_agreement([sentence], [("DET-Fem-Sg", "NOUN-Fem-Sg", "ADJ-Masc-Pl")])
+    check(scores.n_pairs == 1,
+          "the non-agreeing NOUN+ADJ pair is excluded from the denominator")
+    check(scores.by_context["DET+NOUN"][0] == 1, "contexts are labelled by POS pair")
+
+
 def main() -> None:
     for test in (
         test_tagsets,
@@ -273,6 +446,13 @@ def main() -> None:
         test_tagging_baseline,
         test_tagging_scoring,
         test_pipeline_scoring,
+        test_morph_tags,
+        test_morph_corpus_views,
+        test_agreement_is_learned,
+        test_agreement_bias,
+        test_agreement_scoring,
+        test_agreement_pipeline_mode,
+        test_agreement_ignores_non_agreeing_pairs,
     ):
         print(f"\n{test.__name__}")
         test()

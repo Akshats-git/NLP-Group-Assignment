@@ -100,6 +100,100 @@ def brown_to_penn(tag: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# Morphology (Part 3)
+# --------------------------------------------------------------------------
+# A morphology-aware tag is the POS tag with the agreement-carrying features
+# appended, in the notation the brief uses: NOUN-Fem-Sg, ADJ-Masc-Pl.  Only
+# gender and number are included by default -- they are the features that
+# actually participate in agreement between adjacent words, and every extra
+# feature multiplies the tagset (and so divides the counts).
+MORPH_FEATURES: tuple[str, ...] = ("Gender", "Number")
+
+#: UD feature value -> the short form used inside a tag.
+MORPH_ABBREVIATIONS: dict[str, dict[str, str]] = {
+    "Gender": {"Fem": "Fem", "Masc": "Masc", "Neut": "Neut", "Com": "Com"},
+    "Number": {"Sing": "Sg", "Plur": "Pl", "Dual": "Du", "Ptan": "Pl", "Coll": "Sg"},
+    "Person": {"1": "1", "2": "2", "3": "3"},
+    "Case": {"Nom": "Nom", "Acc": "Acc", "Dat": "Dat", "Gen": "Gen"},
+}
+
+#: The inverse: short form -> which feature it belongs to.  Used to read the
+#: features back out of a predicted tag, so evaluation never has to consult the
+#: gold token to find out what the model claimed.
+MORPH_VALUES: dict[str, str] = {
+    short: feature
+    for feature, table in MORPH_ABBREVIATIONS.items()
+    for short in table.values()
+}
+
+
+def parse_feats(field: str) -> tuple[tuple[str, str], ...]:
+    """CoNLL-U FEATS -> a sorted, hashable tuple of ``(feature, value)``.
+
+    ``_`` and empty fields give ``()``.  Ambiguous values (``Gender=Fem,Masc``)
+    keep the first alternative -- the tagset has to be a partition, and the
+    first listed value is UD's convention for the more likely reading.
+    """
+    if not field or field == "_":
+        return ()
+    pairs: list[tuple[str, str]] = []
+    for item in field.split("|"):
+        name, separator, value = item.partition("=")
+        if not separator:
+            continue
+        pairs.append((name.strip(), value.split(",")[0].strip()))
+    return tuple(sorted(pairs))
+
+
+def make_morph_tag(
+    upos: str,
+    feats: Sequence[tuple[str, str]],
+    features: Sequence[str] = MORPH_FEATURES,
+) -> str:
+    """``("NOUN", (("Gender","Fem"),("Number","Sing")))`` -> ``"NOUN-Fem-Sg"``.
+
+    A token with none of the requested features keeps its bare POS tag, so a
+    corpus without FEATS (Brown) yields a morphology-aware tagset identical to
+    its plain one -- the null result, made explicit rather than crashing.
+    """
+    lookup = dict(feats)
+    parts = [upos]
+    for feature in features:
+        value = lookup.get(feature)
+        if not value:
+            continue
+        abbreviation = MORPH_ABBREVIATIONS.get(feature, {}).get(value)
+        if abbreviation:
+            parts.append(abbreviation)
+    return "-".join(parts)
+
+
+def coarse_tag(tag: str) -> str:
+    """``"NOUN-Fem-Sg"`` -> ``"NOUN"``.
+
+    Projecting the morphology-aware tagger's output back to coarse tags is what
+    makes it comparable with the plain tagger: both are then scored on the same
+    decision.  Penn's bracket tags (``-LRB-``) start with the separator and are
+    returned unchanged.
+    """
+    if tag.startswith("-"):
+        return tag
+    return tag.split("-", 1)[0]
+
+
+def tag_features(tag: str) -> dict[str, str]:
+    """``"NOUN-Fem-Sg"`` -> ``{"Gender": "Fem", "Number": "Sg"}``."""
+    features: dict[str, str] = {}
+    if tag.startswith("-"):
+        return features
+    for part in tag.split("-")[1:]:
+        feature = MORPH_VALUES.get(part)
+        if feature:
+            features[feature] = part
+    return features
+
+
+# --------------------------------------------------------------------------
 # Core types
 # --------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
@@ -108,6 +202,19 @@ class Token:
 
     form: str                      # lowercased, alphabetic surface form
     upos: str = ""                 # POS tag; carried through, unused by Part 1
+    feats: tuple[tuple[str, str], ...] = ()   # UD FEATS, sorted; () if none
+
+    def feature(self, name: str) -> str | None:
+        """The raw UD value of one feature, e.g. ``Gender`` -> ``"Fem"``."""
+        for feature, value in self.feats:
+            if feature == name:
+                return value
+        return None
+
+    @property
+    def morph_tag(self) -> str:
+        """The Part 3 tag: POS plus gender/number, e.g. ``NOUN-Fem-Sg``."""
+        return make_morph_tag(self.upos, self.feats)
 
     def __len__(self) -> int:
         return len(self.form)
@@ -151,6 +258,15 @@ class Sentence:
         return tuple(t.upos for t in self.tokens)
 
     @property
+    def morph_tags(self) -> tuple[str, ...]:
+        """Part 3 tags -- identical to ``tags`` on a corpus without FEATS."""
+        return tuple(t.morph_tag for t in self.tokens)
+
+    @property
+    def has_morphology(self) -> bool:
+        return any(t.feats for t in self.tokens)
+
+    @property
     def text(self) -> str:
         """Space-separated reference rendering (what the model must recover)."""
         return " ".join(self.words)
@@ -180,6 +296,17 @@ class Corpus:
 
     def split(self, which: str) -> tuple[Sentence, ...]:
         return {"train": self.train, "dev": self.dev, "test": self.test}[which]
+
+    @property
+    def has_morphology(self) -> bool:
+        """Whether the annotation carries FEATS at all.
+
+        False for Brown, which is why the Part 3 comparison is a null result in
+        English: with no gender or number to attach, the morphology-aware
+        tagset is *identical* to the plain one.  Checked on a prefix of train,
+        since the answer is a property of the annotation scheme.
+        """
+        return any(s.has_morphology for s in self.train[:1000])
 
     def __iter__(self) -> Iterator[Sentence]:
         yield from self.train
@@ -390,6 +517,7 @@ def _sentences_from_conllu(
                 continue
             stats.n_tokens_raw += 1
             word, upos = row[1], row[3]
+            feats = parse_feats(row[5]) if len(row) > 5 else ()
             if upos in drop_upos:
                 stats.n_tokens_dropped_upos += 1
                 continue
@@ -402,7 +530,7 @@ def _sentences_from_conllu(
                 continue
             if form != word.lower():
                 stats.n_tokens_altered += 1
-            tokens.append(Token(form=form, upos=upos))
+            tokens.append(Token(form=form, upos=upos, feats=feats))
         if not tokens:
             continue
         stats.n_sentences_kept += 1

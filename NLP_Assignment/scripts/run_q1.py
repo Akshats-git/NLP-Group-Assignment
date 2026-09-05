@@ -7,7 +7,11 @@ over character positions.
 Part 2 trains a trigram HMM tagger -- emission P(word | tag), transition
 P(tag | previous two tags) -- and runs the same kind of dynamic program over
 tag sequences, both on gold words (to measure tagging alone) and on the
-segmenter's own output (to measure the pipeline).  Run:
+segmenter's own output (to measure the pipeline).
+
+Part 3 refines the tagset with gender and number (NOUN-Fem-Sg, ADJ-Masc-Pl) and
+asks the question that tagset makes possible: did the model reproduce
+grammatical *agreement*?  Run:
 
     .venv/bin/python scripts/run_q1.py                 # full run
     .venv/bin/python scripts/run_q1.py --fast          # small samples, for iteration
@@ -33,8 +37,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from q1.data import Corpus, load_brown, load_spanish, max_word_length, vocabulary  # noqa: E402
-from q1.evaluate import score_pipeline, score_segmentation, score_tagging  # noqa: E402
+from q1.data import (  # noqa: E402
+    Corpus,
+    coarse_tag,
+    load_brown,
+    load_german,
+    load_spanish,
+    max_word_length,
+    vocabulary,
+)
+from q1.evaluate import (  # noqa: E402
+    agreement_bias,
+    score_agreement,
+    score_pipeline,
+    score_segmentation,
+    score_tagging,
+)
 from q1.lm import NgramLM  # noqa: E402
 from q1.segment import DecoderConfig, decode_segmentation  # noqa: E402
 from q1.tagger import (  # noqa: E402
@@ -145,6 +163,159 @@ def tune_tagger(sentences, train_pairs) -> tuple[HMMTagger, dict[int, float]]:
         if accuracy >= best_accuracy:
             best, best_accuracy = tagger, accuracy
     return best, scores
+
+
+# --------------------------------------------------------------------------
+# Part 3 -- morphology-aware tagging
+# --------------------------------------------------------------------------
+def run_morphology(corpus: Corpus, test_sample, train_vocab, order: int,
+                   plain_accuracy: float, baseline_accuracy: float,
+                   segmented=None) -> tuple:
+    """Train and evaluate the Part 3 tagger; returns (tagger, results dict).
+
+    The order is inherited from Part 2 rather than re-tuned, so the only thing
+    that differs between the two taggers is the tagset -- which is the whole
+    point of the comparison.
+    """
+    plain_tagset = {t for s in corpus.train for t in s.tags}
+    morph_tagset = {t for s in corpus.train for t in s.morph_tags}
+
+    # -- the English case: no FEATS in the annotation ----------------------
+    if not corpus.has_morphology or morph_tagset == plain_tagset:
+        print(f"\n  PART 3 -- {corpus.name} carries no morphological features")
+        print(f"    plain tagset={len(plain_tagset)}   "
+              f"morphology-aware tagset={len(morph_tagset)}  (identical)")
+        print("    With no gender or number to attach, the refined tagset IS the")
+        print("    plain one, so the two taggers are the same model and agreement")
+        print("    cannot be measured.  This is a fact about the corpus, not about")
+        print("    the language: a UD English treebank would carry FEATS.")
+        return None, {
+            "available": False,
+            "reason": "corpus has no FEATS annotation",
+            "plain_tagset_size": len(plain_tagset),
+            "morph_tagset_size": len(morph_tagset),
+        }
+
+    print(f"\n  training morphology-aware tagger (order={order}) ...")
+    start = time.perf_counter()
+    train_pairs = tagged_pairs(corpus.train, morph=True)
+    tagger = HMMTagger(TaggerConfig(order=order)).fit(train_pairs)
+    baseline = MostFrequentTagger().fit(train_pairs)
+    print(f"    trained in {time.perf_counter() - start:.1f}s   "
+          f"plain tagset={len(plain_tagset)}   "
+          f"morphology-aware tagset={len(morph_tagset)}")
+
+    predictions = [tagger.tag(s.words) for s in test_sample]
+    baseline_predictions = [baseline.tag(s.words) for s in test_sample]
+    own_scores = score_tagging(test_sample, predictions, train_vocab, morph=True)
+
+    # Projecting back to coarse tags puts both taggers on the identical
+    # decision.  Without this the comparison is rigged: the morphology-aware
+    # tagger is choosing among many more labels.
+    projected = [tuple(coarse_tag(t) for t in tags) for tags in predictions]
+    baseline_projected = [
+        tuple(coarse_tag(t) for t in tags) for tags in baseline_predictions
+    ]
+    projected_scores = score_tagging(test_sample, projected, train_vocab)
+    baseline_projected_scores = score_tagging(
+        test_sample, baseline_projected, train_vocab
+    )
+
+    print_table(
+        "PART 3 -- Morphology-aware tagging, on its own label set",
+        [
+            ("most-frequent-tag (baseline)", len(morph_tagset),
+             pct(score_tagging(test_sample, baseline_predictions,
+                               train_vocab, morph=True).accuracy), "-"),
+            (f"HMM, order={order} (Viterbi)", len(morph_tagset),
+             pct(own_scores.accuracy), pct(own_scores.unknown_accuracy)),
+        ],
+        ("model", "labels", "accuracy", "unknown"),
+    )
+    print("    Not comparable with Part 2: this is a harder decision, over more")
+    print("    labels.  The like-for-like comparison is the next table.")
+
+    print_table(
+        "PART 3 -- Same decision: everything projected to coarse tags",
+        [
+            ("most-frequent-tag, plain tagset", pct(baseline_accuracy), "-"),
+            ("most-frequent-tag, morph tagset -> coarse",
+             pct(baseline_projected_scores.accuracy),
+             f"{100 * (baseline_projected_scores.accuracy - baseline_accuracy):+.2f} pp"),
+            ("HMM, plain tagset", pct(plain_accuracy), "-"),
+            ("HMM, morph tagset -> coarse", pct(projected_scores.accuracy),
+             f"{100 * (projected_scores.accuracy - plain_accuracy):+.2f} pp"),
+        ],
+        ("model", "coarse-tag accuracy", "vs its plain counterpart"),
+    )
+
+    agreement = score_agreement(test_sample, predictions)
+    print_table(
+        f"PART 3 -- Agreement reproduced ({agreement.n_pairs:,} gold-agreeing "
+        "adjacent pairs)",
+        [("ALL CONTEXTS", agreement.n_pairs, pct(agreement.reproduced_rate),
+          pct(agreement.correct_rate))]
+        + [(context, pairs, pct(reproduced), pct(correct))
+           for context, pairs, reproduced, correct in agreement.rows(min_pairs=10)],
+        ("context", "pairs", "agreement reproduced", "and values correct"),
+    )
+
+    # The same question end to end: the segmenter must recover both words
+    # before their agreement can survive at all.
+    pipeline_agreement = None
+    if segmented is not None:
+        pipeline_predictions = [tagger.tag(words) for words in segmented]
+        pipeline_agreement = score_agreement(
+            test_sample, pipeline_predictions, predicted_words=segmented
+        )
+        print_table(
+            "PART 3 -- Agreement end to end (DP segmentation, then morph tagging)",
+            [
+                ("on gold words", agreement.n_pairs,
+                 pct(agreement.reproduced_rate), "-"),
+                ("on predicted words", pipeline_agreement.n_pairs,
+                 pct(pipeline_agreement.reproduced_rate),
+                 pipeline_agreement.n_unrecovered),
+            ],
+            ("scored", "pairs", "agreement reproduced",
+             "pairs lost to segmentation"),
+        )
+
+    bias = agreement_bias(tagger)
+    if bias:
+        print_table(
+            "PART 3 -- The learned pattern, read out of the transition model",
+            [(f"{' '.join(row.context)} __", f"{row.agreeing:.4f}",
+              f"{row.clashing:.4f}", f"{row.ratio:.0f}x",
+              f"{row.underspecified:.4f}") for row in bias],
+            ("context", "P(agreeing ADJ)", "P(clashing ADJ)", "ratio",
+             "P(gender-unmarked ADJ)"),
+        )
+
+    return tagger, {
+        "available": True,
+        "plain_tagset_size": len(plain_tagset),
+        "morph_tagset_size": len(morph_tagset),
+        "accuracy_own_labels": own_scores.accuracy,
+        "unknown_accuracy_own_labels": own_scores.unknown_accuracy,
+        "coarse_accuracy_plain_hmm": plain_accuracy,
+        "coarse_accuracy_morph_hmm": projected_scores.accuracy,
+        "coarse_accuracy_plain_baseline": baseline_accuracy,
+        "coarse_accuracy_morph_baseline": baseline_projected_scores.accuracy,
+        "agreement_pairs": agreement.n_pairs,
+        "agreement_reproduced": agreement.reproduced_rate,
+        "agreement_correct": agreement.correct_rate,
+        "agreement_reproduced_pipeline": (
+            pipeline_agreement.reproduced_rate if pipeline_agreement else None
+        ),
+        "agreement_pairs_lost_to_segmentation": (
+            pipeline_agreement.n_unrecovered if pipeline_agreement else None
+        ),
+        "agreement_by_context": {
+            context: {"pairs": pairs, "reproduced": reproduced, "correct": correct}
+            for context, pairs, reproduced, correct in agreement.rows()
+        },
+    }
 
 
 # --------------------------------------------------------------------------
@@ -297,6 +468,14 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
              "seg-induced errors", "genuine errors", "% from segmentation"),
         )
 
+        # -- PART 3: morphology-aware tagging ------------------------------
+        morph_tagger, morph_results = run_morphology(
+            corpus, test_sample, train_vocab, tagger.order,
+            plain_accuracy=hmm_scores.accuracy,
+            baseline_accuracy=baseline_scores.accuracy,
+            segmented=dp_beam,
+        )
+
         # -- persist -------------------------------------------------------
         model_path = ROOT / "models" / f"q1_{corpus.language.lower()}.pkl"
         model_path.parent.mkdir(exist_ok=True)
@@ -310,6 +489,7 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
                     "config": tuned,
                     "tagger": tagger,
                     "tagger_config": tagger.config,
+                    "morph_tagger": morph_tagger,
                     "baseline_tagger": baseline_tagger,
                     "train_vocab": train_vocab,
                 },
@@ -328,6 +508,10 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
             print(f"    input : {string}")
             print(f"    words : {' '.join(words)}")
             print(f"    tagged: [{pairs}]")
+            if morph_tagger is not None:
+                morph = morph_tagger.tag(words)
+                print("    morph : "
+                      + " ".join(f"{w}/{t}" for w, t in zip(words, morph)))
             print()
 
         scores = score_segmentation(test_sample, dp_beam)
@@ -354,6 +538,7 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
                 "genuine_errors": pipeline.n_genuine_errors,
                 "share_segmentation_induced": pipeline.share_segmentation_induced,
             },
+            "morphology": morph_results,
             "config": asdict(tuned),
             "tagger_config": asdict(tagger.config),
             "latency_ms": {"exact": exact_ms, "beam": beam_ms, "tag": tag_ms},
@@ -400,6 +585,12 @@ def main() -> None:
     if "Spanish" in wanted:
         print("\nloading Spanish (UD Spanish-GSD) ...")
         run_language(load_spanish(), args, results)
+    if "German" in wanted:
+        # Not run by default: clone UD_German-GSD into data/ first (see README).
+        # German adds case to the agreement picture, so Part 3 is the reason to
+        # bother with a third language.
+        print("\nloading German (UD German-GSD) ...")
+        run_language(load_german(), args, results)
 
     out = ROOT / "models" / "q1_results.json"
     out.write_text(json.dumps(results, indent=2))

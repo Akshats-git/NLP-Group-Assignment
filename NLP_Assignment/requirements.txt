@@ -1,0 +1,6 @@
+# NLP Group Assignment 1 — shared dependencies
+nltk>=3.8.1
+numpy>=1.24
+scikit-learn>=1.3
+pandas>=2.0
+tabulate>=0.9

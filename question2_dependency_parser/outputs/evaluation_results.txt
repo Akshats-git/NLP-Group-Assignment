@@ -1,0 +1,9 @@
+Transition-Based Dependency Parser — Evaluation Results
+=======================================================
+
+Dev file: /home/ayush/Desktop/NLP/NLP_assignment_Q2/question2_dependency_parser/data/en_ewt-ud-dev.conllu
+Sentences processed: 2001
+Total tokens evaluated: 25148
+Correct tokens (head + label): 14254
+Labeled Attachment Score (LAS): 56.68%
+Evaluation time: 6.4s

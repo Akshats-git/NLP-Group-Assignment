@@ -1,13 +1,14 @@
-# Question 1 — Comparative Report
+# Question 1 - Comparative Report
 
-Word segmentation and POS tagging on unspaced text, English (Brown) vs Spanish
+Word segmentation and POS tagging on unspaced text: English (Brown) vs Spanish
 (UD Spanish-GSD).
 
-Every number below comes from a single full run,
-`.venv/bin/python scripts/run_q1.py` — transcript in
-[models/q1_run.log](models/q1_run.log), machine-readable results in
-[models/q1_results.json](models/q1_results.json). Test samples are 400
-sentences per language, drawn with `seed=42` from each corpus's own test split.
+Every number below comes from one full run of
+`.venv/bin/python scripts/run_q1.py` - transcript in
+[models/q1_run_full.log](models/q1_run_full.log), machine-readable results in
+[models/q1_results.json](models/q1_results.json). Test samples are 400 sentences
+per language, drawn with `seed=42` from each corpus's own test split. All tuning
+was done on dev; test was consulted once.
 
 ## Setup
 
@@ -19,17 +20,16 @@ sentences per language, drawn with `seed=42` from each corpus's own test split.
 | **Type/token ratio** | **0.052** | **0.120** |
 | Mean token length | 4.72 chars | 4.80 chars |
 | Mean sentence length | 17.7 tokens | 23.3 tokens |
-| LM vocabulary | 23,780 | 16,857 |
 | Dev perplexity (trigram word LM) | 1,088.6 | 2,233.0 |
-| Coarse tagset size | 11 | 16 |
+| OOV rate on the test sample | 2.44% | 6.66% |
+| Tagset size | 11 | 16 |
 | Morphology-aware tagset size | 11 (see §2) | 78 |
 
-That type/token ratio is the single most useful number in the table: Spanish
-reaches almost the same vocabulary size as English from **a quarter of the
-tokens**. Inflection splits each lemma across many surface forms, so every form
-is seen fewer times. Mean token length is essentially identical across the two
-(4.72 vs 4.80 chars), which rules out "Spanish words are longer" as an
-explanation for anything that follows.
+The type/token ratio is the most useful number in the table: Spanish reaches
+almost the same vocabulary size as English from **a quarter of the tokens**.
+Inflection splits each lemma across many surface forms, so every form is seen
+fewer times. Mean token length is essentially identical (4.72 vs 4.80 chars),
+which rules out "Spanish words are longer" as an explanation for anything below.
 
 ## Headline results
 
@@ -37,264 +37,233 @@ explanation for anything that follows.
 | --- | --- | --- |
 | Segmentation, greedy longest-match (baseline) | 66.71% | 50.20% |
 | Segmentation, trigram DP + beam | **95.55%** | **91.59%** |
-| Tagging on gold segmentation, most-frequent-tag (baseline) | 93.93% | 91.16% |
-| Tagging on gold segmentation, trigram HMM | **96.14%** | **93.94%** |
-| End-to-end, greedy + most-frequent (baseline) | 68.68% | 53.21% |
-| End-to-end, DP segment → HMM tag (pipeline) | 92.55% | 86.67% |
-| End-to-end, joint beam decoder | **93.36%** | **89.54%** |
-| Morphological agreement reproduced | n/a | 88.37% (1,479 pairs) |
+| Tagging on gold segmentation, most-frequent-tag (baseline) | 93.64% | 88.72% |
+| Tagging on gold segmentation, trigram HMM | **96.19%** | **93.75%** |
+| End to end, greedy + most-frequent (baseline) | 68.68% | 53.21% |
+| End to end, DP segment then HMM tag | **92.56%** | **86.75%** |
+| Agreement reproduced (gold words) | n/a | 96.46% (2,625 pairs) |
 
 Segmentation is scored by token F1 (a predicted token counts only if its exact
-character span is a gold span); tagging by accuracy; end-to-end by accuracy over
-gold tokens after aligning a wrong-length prediction to the gold by span overlap.
+character span is a gold span); tagging by accuracy; end to end by accuracy over
+gold tokens, where a token whose span was never recovered counts as wrong.
 
 ---
 
 ## 1. Where did English and Spanish differ most?
 
-The gap is **largest at segmentation, and largest of all in the baseline** —
-not in tagging.
+**In segmentation, and above all in the OOV tail - not in tagging.**
 
-| Comparison | English − Spanish |
+| Comparison | English - Spanish |
 | --- | --- |
-| Greedy segmentation baseline | **+16.51 pp** |
+| Segmentation, exact sentences | **+27.75 pp** (66.50 vs 38.75) |
+| Greedy segmentation baseline | **+16.51 pp** (66.71 vs 50.20) |
 | End-to-end baseline | +15.47 pp |
-| DP segmentation | +3.96 pp |
-| End-to-end, joint decoder | +3.83 pp |
-| Tagging given gold segmentation | +2.21 pp |
+| Tagging, **unknown words only** | **+9.78 pp** (86.31 vs 76.53) |
+| End to end, full pipeline | +5.81 pp |
+| DP segmentation (token F1) | +3.96 pp |
+| Tagging given gold segmentation | +2.44 pp |
+| Tagging, **known words only** | +1.45 pp (96.43 vs 94.98) |
 
-Two things follow.
+Three things follow.
 
-**The difficulty is concentrated in segmentation, not tagging.** Once the words
-are correctly separated, Spanish tagging trails English by only 2.21 pp
-(93.94% vs 96.14%) — a modest gap for a 16-tag set against an 11-tag set. The
-end-to-end gap of 3.83 pp is therefore mostly inherited from the segmenter, not
-generated by the tagger.
+**The difficulty is concentrated in segmentation.** Once the words are correctly
+separated, Spanish tagging trails English by only 2.44 pp - and by just 1.45 pp
+on known words. The end-to-end gap of 5.81 pp is therefore mostly inherited from
+the segmenter rather than generated by the tagger.
 
-**Morphology hurts exactly where sparse statistics hurt.** The greedy baseline
-collapses on Spanish (50.20% vs 66.71%) because longest-match needs only a
-vocabulary, and Spanish's vocabulary is both larger relative to its corpus and
-denser in short inflected forms. Every extra short form is another way for a
-greedy matcher to bite off a valid word that was never there. The same
-fragmentation doubles the language model's perplexity (2,233 vs 1,089) *despite
-Spanish having the smaller LM vocabulary* — with each form seen fewer times, the
-trigram model is far less certain about what follows what.
+**Sparse statistics, not grammar, drive the gap.** Spanish's larger relative
+vocabulary means every form is seen fewer times: perplexity is double English's
+(2,233 vs 1,089) *despite* Spanish having the smaller LM vocabulary, and the OOV
+rate is nearly triple (6.66% vs 2.44%). The single widest gap after segmentation
+is unknown-word tagging (+9.78 pp), which is exactly the place where a model has
+no counts to fall back on.
 
-The DP decoder closes most, but not all, of that gap: it recovers from 50.20% to
-91.59%, versus 66.71% to 95.55% in English. Context can compensate for
-fragmentation, but it cannot manufacture counts that the corpus never contained.
-
-A concrete instance, from the brief's own Spanish sample string:
+**The characteristic Spanish failure** is a frequent function word available as
+the prefix of a rarer content word. From the brief's own sample string:
 
 ```
 elcielodespejadoesazul
--> [(el, DET), (cielo, NOUN), (de, ADP), (spejado, NOUN), (es, AUX), (azul, ADJ)]
+-> el/DET cielo/NOUN de/ADP spejado/NOUN es/AUX azul/ADJ
 ```
 
-`despejado` is split into the extremely frequent preposition `de` plus a
-non-word `spejado`. This is the characteristic Spanish failure: a high-frequency
-function word is available as a prefix of a lower-frequency content word, and the
-trigram evidence for `de` outweighs the evidence for a form the model saw rarely.
-English produces the same class of error far less often simply because its
-frequent function words collide with fewer content-word prefixes.
+`despejado` is split into the very frequent preposition `de` plus a non-word
+`spejado`. English produces this class of error far less often simply because
+its frequent function words collide with fewer content-word prefixes.
+
+*Caveat:* Spanish is also being scored on a 16-tag set against English's 11, so
+the tagging comparison is not perfectly like-for-like and slightly flatters
+English.
 
 ## 2. Did agreement-aware tagging help, or add noise?
 
-**It helped in Spanish, and the comparison could not be run at all in English.**
+**It helped in Spanish. In English the question cannot be asked at all.**
 
-**English is a null result about the corpus, not about English.** The
-morphology-aware tags are built from UD `FEATS`, which Brown does not carry.
-With no gender or number features to attach, the morphology-aware tagset is
-*identical* to the plain one — 11 tags either way — and both taggers score
-identically (96.14%). Nothing is learned here about whether agreement helps in
-English; the annotation needed to ask the question is absent.
+**English is a null result about the corpus, not the language.** The
+morphology-aware tags are built from UD `FEATS`, which Brown does not carry. With
+no gender or number to attach, the refined tagset is *identical* to the plain one
+(11 tags either way), so the two taggers are the same model. Nothing is learned
+here about English; the annotation needed to ask the question is absent.
 
-**Spanish, scored naively, looks like it hurts — and that comparison is wrong.**
-On its own label set the morphology-aware HMM scores 91.90% against the plain
-tagger's 93.94%. But these are not the same task: the morph tagger is choosing
-among 64 labels rather than 14. A lower number on a harder task is not evidence
-of noise.
+**Spanish, scored naively, looks worse - and that comparison is invalid.** On its
+own label set the morphology-aware HMM scores 91.72% against the plain tagger's
+93.75%. But these are not the same task: the morph tagger chooses among 78 labels
+rather than 16. A lower number on a harder task is not evidence of noise.
 
 **Scored on the same decision, it helps.** Projecting the morphology-aware
-tagger's output back to coarse tags and scoring *that* puts both models on the
-identical 14-way decision:
+tagger's output back to coarse tags puts both models on the identical 16-way
+decision:
 
 | Model | Coarse-tag accuracy |
 | --- | --- |
-| Plain trigram HMM | 93.94% |
-| Morphology-aware HMM, projected to coarse tags | **94.48%** |
+| Plain trigram HMM | 93.75% |
+| Morphology-aware HMM, projected to coarse | **94.23%** (+0.48 pp) |
+| Plain most-frequent-tag | 88.72% |
+| Morphology-aware most-frequent-tag, projected | 89.74% (+1.02 pp) |
 
-**+0.54 pp.** Being forced to track gender and number made the model's coarse
-decisions better, because agreement constrains which tag sequences are possible:
-a feminine singular determiner genuinely predicts a feminine singular noun.
+So refining the tagset **added no noise**: both models improved on the identical
+decision. But note honestly that the context-free baseline gained *more* than the
+HMM did, so this table on its own does not establish that the gain comes from
+agreement modelling - splitting the tagset changes which tag wins a per-word
+argmax, and that alone can help.
 
-**Where the noise does appear is instructive.** Splitting the tagset costs the
-*context-free* baseline 2.16 pp (91.16% → 88.99%) — with no transitions to
-exploit, the most-frequent-tag model only sees its counts fragmented across more
-labels. The HMM recovers that loss and turns it into a gain. So refining the
-tagset adds noise to a model that cannot use agreement and adds signal to one
-that can.
+**The direct evidence that agreement was learned is stronger.** Reading it
+straight out of the transition table, in the context (matching determiner, noun):
 
-**And it delivers something the plain tagger cannot express at all.** Of 1,479
-adjacent gold-agreeing pairs, the morphology-aware pipeline reproduced agreement
-in **88.37%**:
+| Context | P(agreeing ADJ) | P(clashing ADJ) | Ratio |
+| --- | --- | --- | --- |
+| `DET-Masc-Sg NOUN-Masc-Sg __` | 0.0848 | 0.0047 | **18x** |
+| `DET-Fem-Sg NOUN-Fem-Sg __` | 0.0866 | 0.0065 | **13x** |
+| `DET-Fem-Pl NOUN-Fem-Pl __` | 0.1042 | 0.0085 | **12x** |
+
+An adjective that does not mark gender at all (`grande` -> `ADJ-Sg`) is counted
+as underspecified, not as a clash; counting it as a clash understates the effect
+roughly tenfold.
+
+**And it delivers something the plain tagger cannot express.** Of 2,625 adjacent
+gold-agreeing pairs, agreement was reproduced in **96.46%**:
 
 | Context | Pairs | Agreement reproduced |
 | --- | --- | --- |
-| DET+NOUN | 1,012 | 92.09% |
-| NOUN+ADJ | 142 | 73.24% |
-| ADJ+NOUN | 95 | 84.21% |
-| DET+ADJ | 69 | 98.55% |
-| NOUN+DET | 23 | 91.30% |
-| DET+DET | 21 | 100.00% |
+| DET+NOUN | 1,163 | 97.68% |
+| NOUN+ADJ | 281 | 97.15% |
+| ADJ+NOUN | 156 | 98.72% |
+| DET+ADJ | 116 | 99.14% |
+| NOUN+NOUN | 24 | 70.83% |
+| DET+PROPN | 14 | 71.43% |
 
-The ordering is the linguistically expected one. Determiner-noun agreement
-(`la casa`, `las casas`) is adjacent, near-deterministic, and very frequent, and
-the model gets it right 92% of the time. Post-nominal adjective agreement
-(`casa roja`) is the weakest at 73.24% — the adjective is further from the
-determiner that fixes the gender, and it is often the rarer form of the two. The
-brief's own examples come out right:
+The brief's examples come out fully correct, including the number flip
+propagating across all four agreeing words:
 
 ```
 lacasarojaesgrande      -> la/DET-Fem-Sg casa/NOUN-Fem-Sg roja/ADJ-Fem-Sg es/AUX-Sg grande/ADJ-Sg
 lascasasrojassongrandes -> las/DET-Fem-Pl casas/NOUN-Fem-Pl rojas/ADJ-Fem-Pl son/AUX-Pl grandes/ADJ-Pl
 ```
 
-Both are fully correct, including the number flip propagating across all four
-agreeing words.
+Two honest observations. First, "agreement reproduced" and "agreement carries the
+*correct* values" are identical in every context: there are **zero** pairs where
+the model propagates a consistently wrong gender, because the emission model pins
+the value from the word form. Second, end to end the same figure falls to
+**86.06%**, because 305 of those pairs contain a word the segmenter never
+recovered - agreement cannot survive a word that was never found.
 
 ## 3. Segmentation-induced vs genuine tagging errors
 
-An error is **segmentation-induced** if the token's gold character span was not
-recovered, and **genuine** if the span was correct but the tag was wrong.
+An error is **segmentation-induced** if the gold token's character span was never
+recovered (so no tag decision was made for it) and **genuine** if the span was
+correct and the tag wrong.
 
-| System | Seg-induced | Genuine | % of errors from segmentation |
-| --- | --- | --- | --- |
-| **English** | | | |
-| greedy + most-frequent (baseline) | 1,861 | 291 | 86.5% |
-| DP segment → HMM tag (pipeline) | 273 | 239 | 53.3% |
-| joint beam decoder | 222 | 234 | **48.7%** |
-| **Spanish** | | | |
-| greedy + most-frequent (baseline) | 4,162 | 421 | 90.8% |
-| DP segment → HMM tag (pipeline) | 831 | 475 | 63.6% |
-| joint beam decoder | 542 | 483 | **52.9%** |
+| System | Errors | Seg-induced | Genuine | % from segmentation | Tag acc. given correct span |
+| --- | --- | --- | --- | --- | --- |
+| **English** | | | | | |
+| greedy + most-frequent (baseline) | 2,152 | 1,861 | 291 | **86.5%** | 94.19% |
+| DP segment -> most-frequent tag | 661 | 273 | 388 | 41.3% | 94.12% |
+| DP segment -> HMM tag | 511 | 273 | 238 | **53.4%** | 96.39% |
+| **Spanish** | | | | | |
+| greedy + most-frequent (baseline) | 4,583 | 4,162 | 421 | **90.8%** | 92.53% |
+| DP segment -> most-frequent tag | 1,576 | 831 | 745 | 52.7% | 91.69% |
+| DP segment -> HMM tag | 1,298 | 831 | 467 | **64.0%** | 94.79% |
 
 **With a weak segmenter, segmentation is essentially the only error source**
 (86.5% English, 90.8% Spanish). The baseline's tagging is not the problem: given
-a correctly segmented token it tags at 94.19% (English) and 92.53% (Spanish).
-Nearly all of its end-to-end failure is inherited.
+a correctly segmented token it tags at 94.19% / 92.53%. Nearly all of its
+end-to-end failure is inherited.
 
-**With a good segmenter the two sources come into balance** — 48.7% and 52.9%.
-This is the most useful result in the section: it says the pipeline is no longer
-bottlenecked on one component, and that further work would have to attack both.
+**Improving the tagger raises the segmentation share, which is the point.**
+Going from the most-frequent-tag baseline to the HMM on the same segmenter cuts
+genuine errors sharply (388 -> 238 English, 745 -> 467 Spanish) and leaves
+segmentation-induced errors untouched by construction, so their share rises from
+41.3% to 53.4% and from 52.7% to 64.0%. That number going *up* is the tagger
+working.
 
-**Spanish stays segmentation-dominated longer.** At the pipeline stage Spanish is
-still 63.6% segmentation-induced against English's 53.3%, and it takes the joint
-decoder to bring it to parity. Conditional tagging accuracy is high and similar in
-both languages (96.48% English, 94.78% Spanish given correct segmentation), which
-confirms that what separates the two languages end-to-end is where the words go,
-not what they are called.
+**Spanish remains segmentation-dominated** (64.0% vs 53.4%). Conditional tagging
+accuracy is high and similar in both languages (96.39% vs 94.79% given a correct
+span), which confirms that what separates the two end to end is where the words
+go, not what they are called.
 
-**The joint decoder helps precisely where it should.** Letting tag evidence feed
-back into the segmentation decision cuts segmentation-induced errors from 273 to
-222 in English (−19%) and from 831 to 542 in Spanish (−35%), while genuine tag
-errors barely move (239→234, 475→483). The gain is concentrated exactly in the
-error class the joint model was built to attack — and Spanish, having more of
-that error class to begin with, benefits roughly twice as much (+2.87 pp
-end-to-end vs +0.81 pp).
+The two classes look completely different in practice:
 
-## 4. How much better than the baselines?
+| Segmentation-induced (tagger never saw the word) | Genuine (word right, tag wrong) |
+| --- | --- |
+| `unfailing` -> `un` + `failing` | `eran` VERB -> AUX |
+| `dallasbased` -> `dallas` + `based` | `que` PRON -> SCONJ |
+| `burocracias medicas` -> `burocraciasmedicas` | `bolsillo` NOUN -> PROPN |
+
+Nothing a tagger could do about the left column. The right column is genuine
+ambiguity - and the top confusions confirm it: English mixes VERB/NOUN (35+24)
+and PRT/ADP (17+16); Spanish mixes PROPN/NOUN (75+50, unsurprising once case is
+normalised away) and PRON/DET (42).
+
+## 4. How much better than the simple baselines?
 
 | Task | Baseline | Model | Absolute gain | Error reduction |
 | --- | --- | --- | --- | --- |
 | **English** | | | | |
-| Segmentation (token F1) | 66.71% | 95.55% | +28.85 pp | **86.6%** |
-| Tagging (gold segmentation) | 93.93% | 96.14% | +2.21 pp | 36.5% |
-| End-to-end | 68.68% | 93.36% | +24.68 pp | **78.8%** |
+| Segmentation (token F1) | 66.71% | 95.55% | +28.85 pp | **86.7%** |
+| Segmentation (exact sentences) | 16.25% | 66.50% | +50.25 pp | 60.0% |
+| Tagging (gold segmentation) | 93.64% | 96.19% | +2.55 pp | 40.1% |
+| End to end | 68.68% | 92.56% | +23.88 pp | **76.3%** |
 | **Spanish** | | | | |
 | Segmentation (token F1) | 50.20% | 91.59% | +41.39 pp | **83.1%** |
-| Tagging (gold segmentation) | 91.16% | 93.94% | +2.78 pp | 31.4% |
-| End-to-end | 53.21% | 89.54% | +36.32 pp | **77.6%** |
+| Segmentation (exact sentences) | 5.75% | 38.75% | +33.00 pp | 35.0% |
+| Tagging (gold segmentation) | 88.72% | 93.75% | +5.03 pp | 44.6% |
+| End to end | 53.21% | 86.75% | +33.54 pp | **71.7%** |
 
-The trigram + DP machinery is unambiguously worth its cost, but the two halves
-earn it very differently.
+Both baselines were given every advantage: greedy longest-match gets the *full*
+training vocabulary including hapax words the language model itself discards, and
+most-frequent-tag falls back to the majority tag among rare training words rather
+than a blanket NOUN.
 
-**Segmentation is where the model pays for itself** — it removes 83–87% of the
-baseline's errors. Greedy longest-match has no way to reconsider: one wrong
-early bite corrupts the rest of the string, which is why it segments only 16.25%
-of English and 5.75% of Spanish sentences perfectly, against 66.50% and 38.75%
-for the DP decoder.
+**Segmentation is where the model pays for itself** - it removes 83-87% of the
+baseline's errors. Greedy longest-match has no way to reconsider: one wrong early
+bite corrupts every boundary after it, which is why it segments only 16.25% of
+English and 5.75% of Spanish sentences perfectly, against 66.50% and 38.75% for
+the DP decoder.
 
 **Tagging is where the baseline is already strong.** Most-frequent-tag reaches
-93.93% English / 91.16% Spanish, because most word types simply are unambiguous.
-The HMM's +2.21/+2.78 pp is a real 31–37% error reduction, but it operates on a
-small residue of genuinely ambiguous tokens. Reporting only the end-to-end
-figure would badly overstate what the tagging model contributes.
+93.64% / 88.72%, because most word types are simply unambiguous. The HMM's
++2.55 / +5.03 pp is a real 40-45% error reduction, but it operates on a small
+residue of genuinely ambiguous tokens. Reporting only the end-to-end figure would
+badly overstate what the tagging model contributes.
 
-**End-to-end, the two compose to ~78% error reduction in both languages** — the
-consistency across two typologically different languages is itself evidence the
-gain is structural rather than a quirk of one corpus.
+**The cost is real.** Greedy runs in 0.10 ms/sentence against 92 ms for the DP
+decoder in English (0.16 vs 313 ms in Spanish) - three orders of magnitude for
+those 29-41 points of F1. Beam search is what makes that affordable: at width 8 it
+is identical to exact DP to four significant figures (96.53% vs 96.53% English,
+92.91% vs 92.91% Spanish) while running 10-20x faster.
 
-## 5. Beam search costs nothing in accuracy
+## 5. Known failures and caveats
 
-The exact DP decoder is O(n·L³) and was run unpruned on a 40-sentence subsample
-to check what the beam gives up:
+Stated plainly, since two are on the brief's own sample strings.
 
-| Language | Exact DP | Beam (width 8) | Speedup |
-| --- | --- | --- | --- |
-| English | 96.53% F1 @ 1,997 ms/sent | 96.53% F1 @ 138 ms/sent | **14.5×** |
-| Spanish | 92.91% F1 @ 3,610 ms/sent | 92.91% F1 @ 386 ms/sent | **9.4×** |
-
-The beam is **identical to four significant figures** in both languages while
-running an order of magnitude faster.
-
-The width sweep is diagnostic rather than selective — width 8 is fixed before the
-penalty search, and the sweep then confirms it costs nothing. On dev, widths 4, 8
-and 16 are indistinguishable in F1 (English 0.9547 at all three; Spanish 0.9149 /
-0.9157 / 0.9157). Worth recording honestly: **width 4 would have been equally
-accurate and materially faster** (42 vs 183 ms/sentence on English dev), so the
-headline latencies here are conservative — the beam could be narrowed further at
-no measured accuracy cost.
-
-## 6. Known failure cases
-
-Stated plainly rather than hidden, since two of them are on the brief's own
-sample strings.
-
-- **`brown` → NOUN, not ADJ.** In `thequickbrownfoxjumpsoverthelazydog` every
+- **`brown` -> NOUN, not ADJ.** In `thequickbrownfoxjumpsoverthelazydog` every
   word is segmented correctly, but `brown` is tagged NOUN where the brief expects
-  JJ. In the Brown corpus the form is predominantly a proper noun (it is the
-  corpus's namesake), so both the baseline and the HMM prefer NOUN.
-- **`despejado` → `de` + `spejado`.** Discussed in §1; the decoder prefers a
-  frequent preposition plus a non-word over one rare content word.
-- **`pueden` → AUX, where the brief writes VERB.** This is a tagset convention
-  difference, not an error: UD annotates modal `poder` as AUX, and the model was
-  trained on UD. Under the brief's coarser expectation it would read VERB.
-- **English morphology was never tested.** As set out in §2, Brown carries no
-  `FEATS`, so the agreement analysis is Spanish-only. A UD English treebank would
-  be needed to make that half of the comparison.
-
-## 7. Selected configuration
-
-Tuned on the dev split, never on test:
-
-| | English | Spanish |
-| --- | --- | --- |
-| `max_word_len` | 19 | 19 |
-| `beam_width` | 8 | 8 |
-| `unk_penalty` | 0.0 | 0.0 |
-| `alpha` (LM weight) | 1.0 | 1.0 |
-| `beta` (tag-model weight) | 1.0 | 2.0 |
-
-Spanish selects a heavier tagging weight, but the evidence for that is weaker than
-the table makes it look. English is a **tie**: β=1.0 and β=2.0 both score 0.9393
-on dev, and the tuner keeps the first. Spanish strictly prefers β=2.0 (0.8841) over
-β=1.0 (0.8828) — a margin of 0.13 pp on a 200-sentence dev sample, which is well
-inside noise. So the honest reading is that β is close to flat in both languages
-above 1.0, and the tuning does **not** independently establish that Spanish needs
-more tagging weight.
-
-The claim that Spanish leans harder on tag evidence rests instead on the error
-analysis in §3, which is not marginal: the joint decoder removes 35% of Spanish's
-segmentation-induced errors against 19% of English's, and gains +2.87 pp
-end-to-end against +0.81 pp.
+  an adjective. In the Brown corpus the form is predominantly a proper noun (it
+  is the corpus's namesake), so both the baseline and the HMM prefer NOUN.
+- **`despejado` -> `de` + `spejado`.** Discussed in §1.
+- **`pueden` -> AUX, where the brief writes VERB.** A tagset convention, not an
+  error: UD annotates modal `poder` as AUX, and the model was trained on UD.
+- **English morphology was never tested.** Brown carries no `FEATS`, so the
+  agreement analysis is Spanish-only. A UD English treebank would be needed to
+  complete that half of the comparison.
+- **Sample size.** All test figures are 400 sentences per language; differences
+  below roughly half a point should not be read as real.

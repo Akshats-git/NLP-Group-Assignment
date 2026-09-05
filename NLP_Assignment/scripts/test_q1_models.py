@@ -32,6 +32,8 @@ from q1.data import (
 )
 from q1.evaluate import (
     agreement_bias,
+    build_confusion,
+    error_examples,
     score_agreement,
     score_pipeline,
     score_segmentation,
@@ -322,6 +324,64 @@ def test_pipeline_scoring() -> None:
 
 
 # --------------------------------------------------------------------------
+# Part 5 -- confusion matrix and error attribution
+# --------------------------------------------------------------------------
+def confusion_fixture() -> Sentence:
+    return Sentence.from_tokens([
+        Token("the", "DET"), Token("big", "ADJ"), Token("dog", "NOUN"),
+        Token("ran", "VERB"),
+    ])
+
+
+def test_confusion_matrix() -> None:
+    gold = confusion_fixture()
+    # ADJ mistaken for NOUN, VERB mistaken for NOUN.
+    matrix = build_confusion([gold], [("DET", "NOUN", "NOUN", "NOUN")])
+    check(matrix.n_tokens == 4, "every gold token appears in the matrix")
+    check(abs(matrix.accuracy - 0.5) < 1e-9, "accuracy is the diagonal share")
+    check(matrix.counts[("ADJ", "NOUN")] == 1, "an off-diagonal cell records the mix-up")
+    check(matrix.counts[("DET", "DET")] == 1, "the diagonal is kept, unlike in confusions")
+    check(matrix.recall("NOUN") == 1.0,
+          "NOUN recall is perfect: the one NOUN was found")
+    check(abs(matrix.precision("NOUN") - 1 / 3) < 1e-9,
+          "NOUN precision is poor: it was predicted three times and right once")
+    check(matrix.recall("ADJ") == 0.0 and matrix.f1("ADJ") == 0.0,
+          "a tag never recovered scores zero, and is not a division error")
+    check(matrix.most_confused(1)[0][1] == 1,
+          "the largest off-diagonal cell is reported")
+    check(all(pair[0] != pair[1] for pair, _ in matrix.most_confused(10)),
+          "most_confused never reports the diagonal")
+
+
+def test_confusion_matrix_rows() -> None:
+    gold = confusion_fixture()
+    matrix = build_confusion([gold], [("DET", "NOUN", "NOUN", "NOUN")])
+    tags, rows = matrix.matrix_rows(top_n=2)
+    check(len(tags) == 2, "the table is capped at top_n tags")
+    check(len(rows) == 2 and len(rows[0]) == len(tags) + 3,
+          "each row is gold + one cell per tag + other + recall")
+    for row in rows:
+        counted = sum(cell for cell in row[1:-1] if isinstance(cell, int))
+        check(counted == matrix.gold_total(row[0]),
+              f"row {row[0]} totals its gold count, with the rest folded into 'other'")
+
+
+def test_error_examples_separate_the_two_sources() -> None:
+    gold = confusion_fixture()
+    induced, genuine = error_examples(
+        [gold],
+        [("thebig", "dog", "ran")],          # "the" and "big" were merged
+        [("ADJ", "NOUN", "NOUN")],           # "ran" mistagged NOUN
+    )
+    check([e[0] for e in induced] == ["the", "big"],
+          "the merged words are reported as segmentation-induced")
+    check(induced[0][2] == "thebig",
+          "the example names what the segmenter actually produced")
+    check(genuine == [("ran", "VERB", "NOUN")],
+          "only the correctly segmented, wrongly tagged word is a genuine error")
+
+
+# --------------------------------------------------------------------------
 # Part 3 -- morphology-aware tagging
 # --------------------------------------------------------------------------
 FEM_SG = "Gender=Fem|Number=Sing"
@@ -503,6 +563,9 @@ def main() -> None:
         test_tagging_baseline,
         test_tagging_scoring,
         test_pipeline_scoring,
+        test_confusion_matrix,
+        test_confusion_matrix_rows,
+        test_error_examples_separate_the_two_sources,
         test_morph_tags,
         test_morph_corpus_views,
         test_agreement_is_learned,

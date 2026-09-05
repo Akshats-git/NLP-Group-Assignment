@@ -1,4 +1,4 @@
-# NLP Group Assignment 1 - Question 1, Parts 1-4
+# NLP Group Assignment 1 - Question 1, Parts 1-5
 
 **Part 1 - Word segmentation.** A trigram word language model per corpus, plus a
 dynamic-programming (Viterbi) decoder that recovers word boundaries from
@@ -19,6 +19,10 @@ support this; Brown does not, which makes English an explicit null result.
 **Part 4 - Baseline comparison.** Greedy longest-match segmentation and
 most-frequent-tag tagging, and the improvement of each model over its baseline
 reported as both an absolute gain and the share of the baseline's errors removed.
+
+**Part 5 - Error analysis.** A confusion matrix over the tagger's decisions with
+per-tag precision/recall, and a split of the end-to-end errors into the ones an
+earlier segmentation mistake caused and the ones the tagger genuinely got wrong.
 
 ## Setup
 
@@ -45,7 +49,7 @@ Verify the data layer and print the corpus statistics used in the report:
 | [q1/lm.py](q1/lm.py) | Trigram word LM (Witten-Bell / Kneser-Ney / add-k) + character LM for unknowns |
 | [q1/segment.py](q1/segment.py) | `DecoderConfig`, the DP/Viterbi segmentation decoder, and the Part 4 greedy longest-match baseline |
 | [q1/tagger.py](q1/tagger.py) | Part 2: trigram HMM tagger (emissions, deleted-interpolation transitions, suffix model for unknowns) + most-frequent-tag baseline |
-| [q1/evaluate.py](q1/evaluate.py) | Scoring - segmentation (token/boundary F1), tagging (known/unknown accuracy), end-to-end with error attribution, agreement reproduction |
+| [q1/evaluate.py](q1/evaluate.py) | Scoring - segmentation (token/boundary F1), tagging (known/unknown accuracy), end-to-end with error attribution, agreement reproduction, confusion matrix |
 | [scripts/inspect_q1_data.py](scripts/inspect_q1_data.py) | Invariant checks + corpus statistics |
 | [scripts/test_q1_models.py](scripts/test_q1_models.py) | Correctness tests (LM normalisation, decoder, scoring) |
 | [scripts/run_q1.py](scripts/run_q1.py) | Train → tune on dev → evaluate on test → persist |
@@ -149,6 +153,28 @@ Verify the data layer and print the corpus statistics used in the report:
   most-frequent), which is the honest thing to compare the full pipeline against;
   the Part 2 table separately pairs the *good* segmenter with the baseline tagger
   to isolate the tagger's own contribution.
+
+## Q1 Part 5 decisions
+
+* **The confusion matrix is built on gold words.** Mixing in segmentation errors
+  would put tokens in the matrix the tagger was never asked about. The two error
+  sources are then separated explicitly, which is the other half of Part 5.
+* **The diagonal is kept.** `TaggingScores.confusions` holds only mistakes, which
+  shows *what* gets mixed up but not how often a tag is right; `ConfusionMatrix`
+  keeps the diagonal so per-tag precision and recall fall out - and those are what
+  separate "this tag is rare" from "this tag is hard". A confusion is also
+  reported as a share of its gold tag, since 30 errors on a tag with 2,000
+  instances is a very different fact from 30 on a tag with 40.
+* **The printed matrix is small on purpose.** The top 8 gold tags, with the rest
+  folded into an `other` column so rows still total their gold count - a full
+  78-tag matrix is not something anyone can read. The complete per-tag table goes
+  to `models/q1_results.json`.
+* **Errors are attributed, not just counted.** An error is *segmentation-induced*
+  if the gold token's character span was never recovered (no tag decision was
+  made at all) and *genuine* if the span was right and the tag wrong. The run
+  prints concrete examples of each, and reports the split for three systems, so
+  the shift from a segmentation-dominated to a balanced error profile is visible
+  rather than asserted.
 
 ## Running
 

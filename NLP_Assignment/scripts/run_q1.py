@@ -1,31 +1,3 @@
-"""Question 1, Parts 1 and 2 -- word segmentation, then POS tagging.
-
-Part 1 trains a trigram word language model on each corpus and recovers word
-boundaries from unspaced text with a dynamic-programming (Viterbi) decoder
-over character positions.
-
-Part 2 trains a trigram HMM tagger -- emission P(word | tag), transition
-P(tag | previous two tags) -- and runs the same kind of dynamic program over
-tag sequences, both on gold words (to measure tagging alone) and on the
-segmenter's own output (to measure the pipeline).
-
-Part 3 refines the tagset with gender and number (NOUN-Fem-Sg, ADJ-Masc-Pl) and
-asks the question that tagset makes possible: did the model reproduce
-grammatical *agreement*?
-
-Part 4 asks whether any of it was worth the work, by pitting each component
-against a deliberately simple baseline -- greedy longest-match segmentation and
-most-frequent-tag tagging -- and reporting the improvement as both an absolute
-gain and a share of the baseline's errors removed.  Run:
-
-    .venv/bin/python scripts/run_q1.py                 # full run
-    .venv/bin/python scripts/run_q1.py --fast          # small samples, for iteration
-
-The trained LM, the trained tagger and the tuned configurations are persisted
-to ``models/q1_<language>.pkl`` so later work can reload this pipeline rather
-than retraining it.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -53,6 +25,8 @@ from q1.data import (  # noqa: E402
 )
 from q1.evaluate import (  # noqa: E402
     agreement_bias,
+    build_confusion,
+    error_examples,
     score_agreement,
     score_pipeline,
     score_segmentation,
@@ -527,6 +501,73 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
         print(f"    baselines: greedy longest-match ({greedy_ms:.2f} ms/sent, "
               f"vs {beam_ms:.0f} for the DP decoder) and most-frequent-tag")
 
+        # -- PART 5: error analysis ----------------------------------------
+        # The matrix is built on gold words: mixing in segmentation errors
+        # would put tokens in it the tagger was never asked about.
+        confusion = build_confusion(test_sample, hmm_tags)
+        tags, matrix_rows = confusion.matrix_rows(top_n=8)
+        print_table(
+            "PART 5 -- Confusion matrix, gold segmentation (rows = gold, "
+            "columns = predicted)",
+            matrix_rows,
+            ("gold \\ pred", *tags, "other", "recall"),
+        )
+
+        print_table(
+            "PART 5 -- Per-tag accuracy, hardest first",
+            [
+                (tag, confusion.gold_total(tag), pct(confusion.precision(tag)),
+                 pct(confusion.recall(tag)), pct(confusion.f1(tag)))
+                for tag in sorted(
+                    (t for t in confusion.tags() if confusion.gold_total(t) >= 20),
+                    key=confusion.f1,
+                )[:8]
+            ],
+            ("tag", "gold count", "precision", "recall", "F1"),
+        )
+
+        print_table(
+            "PART 5 -- Most confused tag pairs",
+            [(gold, predicted, count,
+              f"{100 * count / confusion.gold_total(gold):.1f}% of {gold}")
+             for (gold, predicted), count in confusion.most_confused(8)],
+            ("gold", "predicted", "count", "share of that gold tag"),
+        )
+
+        # The second half of Part 5: how many end-to-end errors were really
+        # segmentation errors wearing a tagging costume?
+        print_table(
+            "PART 5 -- Where the end-to-end errors come from",
+            [
+                (name, p.n_errors, p.n_seg_induced_errors, p.n_genuine_errors,
+                 pct(p.share_segmentation_induced),
+                 pct(p.tag_accuracy_given_span))
+                for name, p in (
+                    ("greedy + most-frequent (baseline)", baseline_end_to_end),
+                    ("DP segment -> most-frequent tag", baseline_pipeline),
+                    ("DP segment -> HMM tag", pipeline),
+                )
+            ],
+            ("system", "errors", "seg-induced", "genuine",
+             "% from segmentation", "tag acc | correct span"),
+        )
+        print("    'Genuine' means the character span was recovered exactly and the")
+        print("    tag is still wrong; every other error had no tag decision to make.")
+
+        induced, genuine = error_examples(test_sample, dp_beam, pipeline_tags)
+        if induced:
+            print_table(
+                "PART 5 -- Segmentation-induced errors (the tagger never saw the word)",
+                induced,
+                ("gold word", "gold tag", "what the segmenter produced"),
+            )
+        if genuine:
+            print_table(
+                "PART 5 -- Genuine tagging errors (word correct, tag wrong)",
+                genuine,
+                ("word", "gold tag", "predicted tag"),
+            )
+
         # -- persist -------------------------------------------------------
         model_path = ROOT / "models" / f"q1_{corpus.language.lower()}.pkl"
         model_path.parent.mkdir(exist_ok=True)
@@ -588,6 +629,35 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
                 "seg_induced_errors": pipeline.n_seg_induced_errors,
                 "genuine_errors": pipeline.n_genuine_errors,
                 "share_segmentation_induced": pipeline.share_segmentation_induced,
+            },
+            "error_analysis": {
+                "confusion_top_pairs": [
+                    {"gold": gold, "predicted": predicted, "count": count}
+                    for (gold, predicted), count in confusion.most_confused(10)
+                ],
+                "per_tag": {
+                    tag: {
+                        "gold_count": confusion.gold_total(tag),
+                        "precision": confusion.precision(tag),
+                        "recall": confusion.recall(tag),
+                        "f1": confusion.f1(tag),
+                    }
+                    for tag in confusion.tags()
+                },
+                "errors_by_source": {
+                    name: {
+                        "total": p.n_errors,
+                        "segmentation_induced": p.n_seg_induced_errors,
+                        "genuine": p.n_genuine_errors,
+                        "share_segmentation_induced": p.share_segmentation_induced,
+                        "tag_accuracy_given_span": p.tag_accuracy_given_span,
+                    }
+                    for name, p in (
+                        ("baseline_greedy_most_frequent", baseline_end_to_end),
+                        ("dp_most_frequent", baseline_pipeline),
+                        ("dp_hmm", pipeline),
+                    )
+                },
             },
             "baselines": {
                 "greedy_token_f1": greedy_scores.token_f1,

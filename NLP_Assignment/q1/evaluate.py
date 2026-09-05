@@ -427,3 +427,145 @@ def agreement_bias(
                 clashing += probability
         rows.append(AgreementBias(context, agreeing, clashing, underspecified))
     return rows
+
+
+# --------------------------------------------------------------------------
+# Part 5 -- confusion matrix and error attribution
+# --------------------------------------------------------------------------
+@dataclass
+class ConfusionMatrix:
+    """Full ``(gold, predicted)`` tag counts, diagonal included.
+
+    ``TaggingScores.confusions`` holds only the mistakes, which is enough to
+    see *what* gets mixed up but not enough to say how often a tag is right.
+    Keeping the diagonal lets per-tag precision and recall fall out, and those
+    are what separate "this tag is rare" from "this tag is hard".
+    """
+
+    counts: Counter = field(default_factory=Counter)
+
+    def add(self, gold: str, predicted: str) -> None:
+        self.counts[(gold, predicted)] += 1
+
+    @property
+    def n_tokens(self) -> int:
+        return sum(self.counts.values())
+
+    @property
+    def accuracy(self) -> float:
+        correct = sum(c for (gold, pred), c in self.counts.items() if gold == pred)
+        return correct / self.n_tokens if self.n_tokens else 0.0
+
+    def gold_total(self, tag: str) -> int:
+        return sum(c for (gold, _), c in self.counts.items() if gold == tag)
+
+    def predicted_total(self, tag: str) -> int:
+        return sum(c for (_, pred), c in self.counts.items() if pred == tag)
+
+    def correct(self, tag: str) -> int:
+        return self.counts.get((tag, tag), 0)
+
+    def precision(self, tag: str) -> float:
+        total = self.predicted_total(tag)
+        return self.correct(tag) / total if total else 0.0
+
+    def recall(self, tag: str) -> float:
+        total = self.gold_total(tag)
+        return self.correct(tag) / total if total else 0.0
+
+    def f1(self, tag: str) -> float:
+        p, r = self.precision(tag), self.recall(tag)
+        return 2 * p * r / (p + r) if p + r else 0.0
+
+    def tags(self) -> list[str]:
+        """Every tag appearing as gold or prediction, most frequent gold first."""
+        seen = {tag for pair in self.counts for tag in pair}
+        return sorted(seen, key=lambda t: (-self.gold_total(t), t))
+
+    def most_confused(self, n: int = 10) -> list[tuple[tuple[str, str], int]]:
+        """The off-diagonal cells, largest first."""
+        errors = Counter({
+            pair: count for pair, count in self.counts.items() if pair[0] != pair[1]
+        })
+        return errors.most_common(n)
+
+    def matrix_rows(self, top_n: int = 8) -> tuple[list[str], list[list]]:
+        """A small square table over the ``top_n`` most frequent gold tags.
+
+        Everything else is folded into a trailing "other" column, so the row
+        totals still add up and the table stays readable -- a full 78-tag
+        matrix is not something anyone can read.
+        """
+        tags = [t for t in self.tags() if self.gold_total(t) > 0][:top_n]
+        chosen = set(tags)
+        rows: list[list] = []
+        for gold in tags:
+            row: list = [gold]
+            for predicted in tags:
+                row.append(self.counts.get((gold, predicted), 0))
+            row.append(sum(
+                count for (g, p), count in self.counts.items()
+                if g == gold and p not in chosen
+            ))
+            row.append(f"{100 * self.recall(gold):.1f}%")
+            rows.append(row)
+        return tags, rows
+
+
+def build_confusion(
+    sentences: Sequence[Sentence],
+    predictions: Sequence[Sequence[str]],
+    morph: bool = False,
+) -> ConfusionMatrix:
+    """Confusion matrix over gold-segmented words.
+
+    Scored on gold words on purpose: mixing in segmentation errors would put
+    tokens in the matrix that the tagger was never asked about, and the whole
+    point of Part 5 is to keep those two error sources apart.
+    """
+    matrix = ConfusionMatrix()
+    for sentence, tags in zip(sentences, predictions):
+        gold_tags = sentence.morph_tags if morph else sentence.tags
+        if len(tags) != len(gold_tags):
+            raise ValueError(
+                f"{sentence.sent_id}: {len(tags)} tags for {len(gold_tags)} gold tokens"
+            )
+        for gold, predicted in zip(gold_tags, tags):
+            matrix.add(gold, predicted)
+    return matrix
+
+
+def error_examples(
+    sentences: Sequence[Sentence],
+    predicted_words: Sequence[Sequence[str]],
+    predicted_tags: Sequence[Sequence[str]],
+    limit: int = 5,
+) -> tuple[list[tuple], list[tuple]]:
+    """Concrete instances of each error class, for the write-up.
+
+    Returns ``(segmentation_induced, genuine)``.  A segmentation-induced entry
+    names the gold word, its tag, and the predicted tokens that overlap its
+    character span -- which is what actually happened to it.  A genuine entry
+    names a correctly segmented word whose tag is wrong.
+    """
+    induced: list[tuple] = []
+    genuine: list[tuple] = []
+    for sentence, words, tags in zip(sentences, predicted_words, predicted_tags):
+        spans = spans_from_words(words)
+        by_span = dict(zip(spans, tags))
+        for (start, end), gold_word, gold_tag in zip(
+            sentence.gold_spans, sentence.words, sentence.tags
+        ):
+            predicted_tag = by_span.get((start, end))
+            if predicted_tag is None:
+                if len(induced) < limit:
+                    overlapping = [
+                        word for word, (s, e) in zip(words, spans)
+                        if s < end and e > start
+                    ]
+                    induced.append((gold_word, gold_tag, " + ".join(overlapping)))
+            elif predicted_tag != gold_tag and len(genuine) < limit:
+                genuine.append((gold_word, gold_tag, predicted_tag))
+        if len(induced) >= limit and len(genuine) >= limit:
+            break
+    return induced, genuine

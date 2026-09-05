@@ -38,7 +38,12 @@ from q1.evaluate import (
     score_tagging,
 )
 from q1.lm import CharLM, NgramLM
-from q1.segment import DecoderConfig, decode_segmentation, spans_from_words
+from q1.segment import (
+    DecoderConfig,
+    decode_segmentation,
+    greedy_longest_match,
+    spans_from_words,
+)
 from q1.tagger import (
     BOS_TAG,
     EOS_TAG,
@@ -151,6 +156,56 @@ def test_segmentation_scoring() -> None:
           "token precision is over predicted spans")
     check(scores.sentence_accuracy == 0.0,
           "a sentence with any wrong boundary is not exact")
+
+
+# --------------------------------------------------------------------------
+# Part 4 -- baselines
+# --------------------------------------------------------------------------
+def test_greedy_baseline() -> None:
+    vocabulary = {"the", "cat", "sat", "on", "mat", "a", "cats", "at"}
+    check(greedy_longest_match("thecatsatonthemat", vocabulary)
+          == ("the", "cats", "at", "on", "the", "mat"),
+          "greedy takes the longest match, wrongly biting 'cats' out of 'cat sat'")
+    check(greedy_longest_match("", vocabulary) == (),
+          "the empty string segments to ()")
+    words = greedy_longest_match("thexyzcat", vocabulary)
+    check(words == ("the", "x", "y", "z", "cat"),
+          "unmatched characters fall back to single characters")
+    check("".join(words) == "thexyzcat",
+          "the output is always a partition of the input")
+    check(greedy_longest_match("catsat", vocabulary, max_word_len=3)
+          == ("cat", "sat"),
+          "max_word_len caps the bite, which here happens to help")
+
+
+def test_greedy_is_beaten_by_dp() -> None:
+    """The comparison Part 4 exists to make.
+
+    The corpus is built so the trap is real: "cats" and "at" are both genuine
+    vocabulary words, so longest-match bites "cats" out of "cat sat" -- while
+    the trigram model, scoring the whole segmentation, prefers the split it has
+    actually seen.
+    """
+    raw = (
+        [["the", "cat", "sat", "on", "the", "mat"]] * 40
+        + [["the", "cats", "ran"]] * 4
+        + [["a", "cat", "sat", "at", "the", "mat"]] * 4
+    )
+    sentences = [
+        Sentence.from_tokens([Token(w) for w in row]) for row in raw
+    ]
+    vocabulary = {w for s in sentences for w in s.words}
+    check({"cats", "at"} <= vocabulary, "the trap words are in the vocabulary")
+
+    lm = NgramLM(3, unk_threshold=0).fit([s.words for s in sentences])
+    config = DecoderConfig(max_word_len=6, beam_width=None)
+    gold = ("the", "cat", "sat", "on", "the", "mat")
+    greedy = greedy_longest_match("thecatsatonthemat", vocabulary, 6)
+    dp = decode_segmentation("thecatsatonthemat", lm, config)
+    check(greedy == ("the", "cats", "at", "on", "the", "mat"),
+          "greedy takes the locally longest bite and gets the sentence wrong")
+    check(dp == gold,
+          "the DP decoder scores whole segmentations and gets it right")
 
 
 # --------------------------------------------------------------------------
@@ -438,6 +493,8 @@ def main() -> None:
         test_lm_open_vocabulary,
         test_segmentation,
         test_segmentation_scoring,
+        test_greedy_baseline,
+        test_greedy_is_beaten_by_dp,
         test_tagger_distributions,
         test_tagger_learns_context,
         test_tagger_viterbi,

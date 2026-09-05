@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Container, Sequence
 
 from q1.lm import BOS, EOS, NEG_INF, NgramLM
 
@@ -125,3 +125,49 @@ def segment_corpus(
 ) -> list[tuple[str, ...]]:
     """Segment every sentence's ``chars``; convenience wrapper for evaluation."""
     return [decode_segmentation(s.chars, lm, config) for s in sentences]
+
+
+# --------------------------------------------------------------------------
+# Part 4 -- baseline segmenter
+# --------------------------------------------------------------------------
+def greedy_longest_match(
+    chars: str,
+    vocabulary: Container[str],
+    max_word_len: int = DecoderConfig().max_word_len,
+) -> tuple[str, ...]:
+    """Maximum matching: at each position take the longest word in ``vocabulary``.
+
+    The baseline the DP decoder has to beat.  Its defining weakness is that the
+    choice is *local and final* -- there is no way to reconsider a bite once
+    taken, so one wrong early match corrupts every boundary after it.  The DP
+    decoder differs precisely in scoring whole segmentations instead.
+
+    A position where no vocabulary word matches emits a single character, the
+    standard fallback: it keeps the output a partition of the input (so it can
+    be scored by exactly the same span metric) and it cannot silently drop
+    characters.
+
+    ``vocabulary`` should be the *full* training vocabulary, hapax words
+    included, even though the language model itself discards those -- the
+    comparison is more honest for handing the baseline the larger lexicon
+    rather than the model's own.
+    """
+    words: list[str] = []
+    position, n = 0, len(chars)
+    while position < n:
+        longest = min(max_word_len, n - position)
+        length = 1
+        for length in range(longest, 0, -1):
+            if length == 1 or chars[position : position + length] in vocabulary:
+                break
+        words.append(chars[position : position + length])
+        position += length
+    return tuple(words)
+
+
+def greedy_corpus(
+    sentences: Sequence,
+    vocabulary: Container[str],
+    max_word_len: int = DecoderConfig().max_word_len,
+) -> list[tuple[str, ...]]:
+    return [greedy_longest_match(s.chars, vocabulary, max_word_len) for s in sentences]

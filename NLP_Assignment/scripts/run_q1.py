@@ -11,7 +11,12 @@ segmenter's own output (to measure the pipeline).
 
 Part 3 refines the tagset with gender and number (NOUN-Fem-Sg, ADJ-Masc-Pl) and
 asks the question that tagset makes possible: did the model reproduce
-grammatical *agreement*?  Run:
+grammatical *agreement*?
+
+Part 4 asks whether any of it was worth the work, by pitting each component
+against a deliberately simple baseline -- greedy longest-match segmentation and
+most-frequent-tag tagging -- and reporting the improvement as both an absolute
+gain and a share of the baseline's errors removed.  Run:
 
     .venv/bin/python scripts/run_q1.py                 # full run
     .venv/bin/python scripts/run_q1.py --fast          # small samples, for iteration
@@ -54,7 +59,11 @@ from q1.evaluate import (  # noqa: E402
     score_tagging,
 )
 from q1.lm import NgramLM  # noqa: E402
-from q1.segment import DecoderConfig, decode_segmentation  # noqa: E402
+from q1.segment import (  # noqa: E402
+    DecoderConfig,
+    decode_segmentation,
+    greedy_corpus,
+)
 from q1.tagger import (  # noqa: E402
     HMMTagger,
     MostFrequentTagger,
@@ -476,6 +485,48 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
             segmented=dp_beam,
         )
 
+        # -- PART 4: is any of this worth it? ------------------------------
+        # Greedy longest-match gets the *full* training vocabulary, hapax words
+        # included -- a more generous lexicon than the LM keeps for itself.
+        start = time.perf_counter()
+        greedy = greedy_corpus(test_sample, train_vocab, tuned.max_word_len)
+        greedy_ms = (time.perf_counter() - start) / len(test_sample) * 1000
+        greedy_scores = score_segmentation(test_sample, greedy)
+        model_seg = score_segmentation(test_sample, dp_beam)
+
+        # The end-to-end baseline is both simple components together, which is
+        # the honest thing to compare the full pipeline against.
+        greedy_tags = [baseline_tagger.tag(words) for words in greedy]
+        baseline_end_to_end = score_pipeline(test_sample, greedy, greedy_tags)
+
+        comparisons = [
+            ("Segmentation (token F1)",
+             greedy_scores.token_f1, model_seg.token_f1),
+            ("Segmentation (exact sentences)",
+             greedy_scores.sentence_accuracy, model_seg.sentence_accuracy),
+            ("Tagging, gold segmentation",
+             baseline_scores.accuracy, hmm_scores.accuracy),
+            ("End to end (segment + tag)",
+             baseline_end_to_end.accuracy, pipeline.accuracy),
+        ]
+        rows = []
+        for task, baseline_value, model_value in comparisons:
+            gain = model_value - baseline_value
+            headroom = 1.0 - baseline_value
+            # Error reduction: the share of the baseline's mistakes removed.
+            # A +2 pp gain on a 94% baseline is a third of the remaining
+            # errors; the same +2 pp on a 50% baseline is a twenty-fifth.
+            reduction = gain / headroom if headroom > 1e-12 else float("nan")
+            rows.append((task, pct(baseline_value), pct(model_value),
+                         f"{100 * gain:+.2f} pp", pct(reduction)))
+        print_table(
+            "PART 4 -- Improvement over the simple baselines (test sample)",
+            rows,
+            ("task", "baseline", "model", "absolute gain", "error reduction"),
+        )
+        print(f"    baselines: greedy longest-match ({greedy_ms:.2f} ms/sent, "
+              f"vs {beam_ms:.0f} for the DP decoder) and most-frequent-tag")
+
         # -- persist -------------------------------------------------------
         model_path = ROOT / "models" / f"q1_{corpus.language.lower()}.pkl"
         model_path.parent.mkdir(exist_ok=True)
@@ -537,6 +588,26 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
                 "seg_induced_errors": pipeline.n_seg_induced_errors,
                 "genuine_errors": pipeline.n_genuine_errors,
                 "share_segmentation_induced": pipeline.share_segmentation_induced,
+            },
+            "baselines": {
+                "greedy_token_f1": greedy_scores.token_f1,
+                "greedy_boundary_f1": greedy_scores.boundary_f1,
+                "greedy_sentence_accuracy": greedy_scores.sentence_accuracy,
+                "greedy_latency_ms": greedy_ms,
+                "most_frequent_tag_accuracy": baseline_scores.accuracy,
+                "end_to_end_accuracy": baseline_end_to_end.accuracy,
+                "improvement": {
+                    task: {
+                        "baseline": baseline_value,
+                        "model": model_value,
+                        "absolute_gain": model_value - baseline_value,
+                        "error_reduction": (
+                            (model_value - baseline_value) / (1.0 - baseline_value)
+                            if 1.0 - baseline_value > 1e-12 else None
+                        ),
+                    }
+                    for task, baseline_value, model_value in comparisons
+                },
             },
             "morphology": morph_results,
             "config": asdict(tuned),

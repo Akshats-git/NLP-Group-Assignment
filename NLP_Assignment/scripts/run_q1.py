@@ -1,15 +1,20 @@
-"""Question 1, Part 1 -- word segmentation.
+"""Question 1, Parts 1 and 2 -- word segmentation, then POS tagging.
 
-Trains a trigram word language model on each corpus and recovers word
+Part 1 trains a trigram word language model on each corpus and recovers word
 boundaries from unspaced text with a dynamic-programming (Viterbi) decoder
-over character positions.  Run:
+over character positions.
+
+Part 2 trains a trigram HMM tagger -- emission P(word | tag), transition
+P(tag | previous two tags) -- and runs the same kind of dynamic program over
+tag sequences, both on gold words (to measure tagging alone) and on the
+segmenter's own output (to measure the pipeline).  Run:
 
     .venv/bin/python scripts/run_q1.py                 # full run
     .venv/bin/python scripts/run_q1.py --fast          # small samples, for iteration
 
-The trained LM and the tuned DecoderConfig are persisted to
-``models/q1_<language>.pkl`` so later work can reload this decoder rather than
-retraining it.
+The trained LM, the trained tagger and the tuned configurations are persisted
+to ``models/q1_<language>.pkl`` so later work can reload this pipeline rather
+than retraining it.
 """
 
 from __future__ import annotations
@@ -29,9 +34,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from q1.data import Corpus, load_brown, load_spanish, max_word_length, vocabulary  # noqa: E402
-from q1.evaluate import score_segmentation  # noqa: E402
+from q1.evaluate import score_pipeline, score_segmentation, score_tagging  # noqa: E402
 from q1.lm import NgramLM  # noqa: E402
 from q1.segment import DecoderConfig, decode_segmentation  # noqa: E402
+from q1.tagger import (  # noqa: E402
+    HMMTagger,
+    MostFrequentTagger,
+    TaggerConfig,
+    tagged_pairs,
+)
 
 RULE = "=" * 78
 SEED = 42
@@ -111,6 +122,29 @@ def tune_segmentation(runner: Runner, sentences, base: DecoderConfig) -> Decoder
         f1 = score_segmentation(sentences, predictions).token_f1
         print(f"    beam={width:>5}  token F1={f1:.4f}  {elapsed:.0f} ms/sentence")
     return best
+
+
+def tune_tagger(sentences, train_pairs) -> tuple[HMMTagger, dict[int, float]]:
+    """Pick the transition order on dev: bigram history vs the brief's trigram.
+
+    The brief specifies conditioning on the previous *two* tags; this fits both
+    and reports them, so the trigram's contribution is measured rather than
+    assumed.  Selection is on dev only -- test is never consulted.
+    """
+    print("\n  tuning tagger on dev ...")
+    scores: dict[int, float] = {}
+    best, best_accuracy = None, -1.0
+    for order in (2, 3):
+        tagger = HMMTagger(TaggerConfig(order=order)).fit(train_pairs)
+        predictions = [tagger.tag(s.words) for s in sentences]
+        accuracy = score_tagging(sentences, predictions).accuracy
+        scores[order] = accuracy
+        print(f"    order={order} (history of {order - 1} tags)  accuracy={accuracy:.4f}")
+        # ">=" so a tie goes to the higher order: the trigram is the model the
+        # brief specifies, and a tie is no evidence against it.
+        if accuracy >= best_accuracy:
+            best, best_accuracy = tagger, accuracy
+    return best, scores
 
 
 # --------------------------------------------------------------------------
@@ -196,6 +230,73 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
             ("model", "token F1", "boundary F1", "exact sent", "ms/sent"),
         )
 
+        # -- PART 2: tagging -----------------------------------------------
+        start = time.perf_counter()
+        train_pairs = tagged_pairs(corpus.train)
+        baseline_tagger = MostFrequentTagger().fit(train_pairs)
+        tagger, order_scores = tune_tagger(dev_sample, train_pairs)
+        print(f"\n  tagger trained in {time.perf_counter() - start:.1f}s   "
+              f"order={tagger.order}   tags={len(tagger.tags)}   "
+              f"lambdas={ {n: round(w, 3) for n, w in tagger.lambdas.items()} }")
+
+        # (a) Tagging alone: gold words in, tags out.  This isolates the two
+        # distributions Part 2 learns from any segmentation error.
+        gold_words = [s.words for s in test_sample]
+        start = time.perf_counter()
+        hmm_tags = [tagger.tag(words) for words in gold_words]
+        tag_ms = (time.perf_counter() - start) / len(test_sample) * 1000
+        baseline_tags = [baseline_tagger.tag(words) for words in gold_words]
+
+        hmm_scores = score_tagging(test_sample, hmm_tags, train_vocab)
+        baseline_scores = score_tagging(test_sample, baseline_tags, train_vocab)
+        print_table(
+            "PART 2 -- Tagging on gold segmentation (test sample)",
+            [
+                ("most-frequent-tag (baseline)", pct(baseline_scores.accuracy),
+                 pct(baseline_scores.known_accuracy),
+                 pct(baseline_scores.unknown_accuracy),
+                 pct(baseline_scores.sentence_accuracy), "-"),
+                (f"HMM, order={tagger.order} (Viterbi)", pct(hmm_scores.accuracy),
+                 pct(hmm_scores.known_accuracy),
+                 pct(hmm_scores.unknown_accuracy),
+                 pct(hmm_scores.sentence_accuracy), f"{tag_ms:.1f}"),
+            ],
+            ("model", "accuracy", "known", "unknown", "exact sent", "ms/sent"),
+        )
+        print(f"    OOV rate on the test sample: {pct(hmm_scores.oov_rate)}")
+
+        print_table(
+            "PART 2 -- Most confused tag pairs (HMM)",
+            [(gold, predicted, count)
+             for (gold, predicted), count in hmm_scores.top_confusions(6)],
+            ("gold", "predicted", "count"),
+        )
+
+        # (b) The actual Part 2 task: tag the *segmented* words.  Scored over
+        # gold tokens, so a token the segmenter never recovered counts as an
+        # error even though the tagger was never asked about it.
+        pipeline_tags = [tagger.tag(words) for words in dp_beam]
+        baseline_pipeline_tags = [baseline_tagger.tag(words) for words in dp_beam]
+        pipeline = score_pipeline(test_sample, dp_beam, pipeline_tags)
+        baseline_pipeline = score_pipeline(test_sample, dp_beam, baseline_pipeline_tags)
+        print_table(
+            "PART 1 + 2 -- End to end: DP segmentation then HMM tagging",
+            [
+                ("DP segment -> most-frequent tag", pct(baseline_pipeline.accuracy),
+                 pct(baseline_pipeline.tag_accuracy_given_span),
+                 baseline_pipeline.n_seg_induced_errors,
+                 baseline_pipeline.n_genuine_errors,
+                 pct(baseline_pipeline.share_segmentation_induced)),
+                ("DP segment -> HMM tag", pct(pipeline.accuracy),
+                 pct(pipeline.tag_accuracy_given_span),
+                 pipeline.n_seg_induced_errors,
+                 pipeline.n_genuine_errors,
+                 pct(pipeline.share_segmentation_induced)),
+            ],
+            ("system", "accuracy", "tag acc | correct span",
+             "seg-induced errors", "genuine errors", "% from segmentation"),
+        )
+
         # -- persist -------------------------------------------------------
         model_path = ROOT / "models" / f"q1_{corpus.language.lower()}.pkl"
         model_path.parent.mkdir(exist_ok=True)
@@ -207,6 +308,9 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
                     "tagset": corpus.tagset,
                     "lm": lm,
                     "config": tuned,
+                    "tagger": tagger,
+                    "tagger_config": tagger.config,
+                    "baseline_tagger": baseline_tagger,
                     "train_vocab": train_vocab,
                 },
                 handle,
@@ -219,8 +323,11 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
         print(f"\n  Sample outputs ({corpus.language})")
         for string in SAMPLES.get(corpus.language, []):
             words = decode_segmentation(string, lm, tuned)
+            tags = tagger.tag(words)
+            pairs = ", ".join(f"({w}, {t})" for w, t in zip(words, tags))
             print(f"    input : {string}")
-            print(f"    output: {' '.join(words)}")
+            print(f"    words : {' '.join(words)}")
+            print(f"    tagged: [{pairs}]")
             print()
 
         scores = score_segmentation(test_sample, dp_beam)
@@ -230,8 +337,26 @@ def run_language(corpus: Corpus, args, results: dict) -> None:
                 "boundary_f1": scores.boundary_f1,
                 "sentence_accuracy": scores.sentence_accuracy,
             },
+            "tagging": {
+                "baseline_accuracy": baseline_scores.accuracy,
+                "hmm_accuracy": hmm_scores.accuracy,
+                "hmm_known_accuracy": hmm_scores.known_accuracy,
+                "hmm_unknown_accuracy": hmm_scores.unknown_accuracy,
+                "oov_rate": hmm_scores.oov_rate,
+                "dev_accuracy_by_order": order_scores,
+                "n_tags": len(tagger.tags),
+            },
+            "end_to_end": {
+                "baseline_accuracy": baseline_pipeline.accuracy,
+                "pipeline_accuracy": pipeline.accuracy,
+                "tag_accuracy_given_span": pipeline.tag_accuracy_given_span,
+                "seg_induced_errors": pipeline.n_seg_induced_errors,
+                "genuine_errors": pipeline.n_genuine_errors,
+                "share_segmentation_induced": pipeline.share_segmentation_induced,
+            },
             "config": asdict(tuned),
-            "latency_ms": {"exact": exact_ms, "beam": beam_ms},
+            "tagger_config": asdict(tagger.config),
+            "latency_ms": {"exact": exact_ms, "beam": beam_ms, "tag": tag_ms},
             "test_sample_size": len(test_sample),
         }
     finally:

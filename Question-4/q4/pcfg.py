@@ -104,6 +104,11 @@ def _get_indices(grammar: PCFG) -> tuple[dict, dict]:
     return binary_rules, lexical_rules
 
 
+def _is_sentence_root(symbol: str) -> bool:
+    """True for S, SBAR, SINV, SQ and the S+VP labels collapse_unary leaves behind."""
+    return symbol.startswith("S") and "|" not in symbol
+
+
 def cky_parse(words: tuple[str, ...], tags: tuple[str, ...], grammar: PCFG) -> tuple[Optional[str], float]:
     """
     Probabilistic CKY Viterbi parser.
@@ -147,7 +152,15 @@ def cky_parse(words: tuple[str, ...], tags: tuple[str, ...], grammar: PCFG) -> t
     if not top:
         return None, NEG_INF
 
-    root = "S" if "S" in top else max(top, key=lambda s: top[s][0])
+    # Only a sentence symbol counts as a parse. A chart that spans the whole
+    # input under NP or under a binarisation symbol such as S|<DT-VP> has found
+    # a phrase, not a sentence, and scoring that as a parse would let single
+    # word fragments through as well-formed.
+    roots = [symbol for symbol in top if _is_sentence_root(symbol)]
+    if not roots:
+        return None, NEG_INF
+
+    root = "S" if "S" in roots else max(roots, key=lambda s: top[s][0])
     log_prob = top[root][0]
 
     def _trace(sym: str, i: int, j: int) -> str:

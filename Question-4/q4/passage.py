@@ -32,7 +32,12 @@ def sample_passage(seed: int | None = None, n_sentences: int = 6) -> tuple[list[
     """Sample a short passage (5-8 sentences) from available NLTK corpora."""
     rng = random.Random(seed)
 
-    for corpus_name in CORPORA:
+    # Shuffled rather than tried in order, otherwise the first corpus in the
+    # list answers every call and the passage is never drawn from the other two.
+    order = list(CORPORA)
+    rng.shuffle(order)
+
+    for corpus_name in order:
         if not _ensure_corpus(corpus_name):
             continue
         corpus = getattr(nltk.corpus, corpus_name)

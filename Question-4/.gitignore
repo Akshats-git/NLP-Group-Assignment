@@ -2,3 +2,6 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Rebuilt on first run from the Brown train split, too large to keep in git.
+models/q4_grammar_lms.pkl

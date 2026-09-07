@@ -1,91 +1,54 @@
-# Question 4 — Live NLP Editor
+# Question 4: Live NLP Text Editor with Integrated Pipeline
 
-A Streamlit application implementing a live-typing NLP editor with three
-real-time alert systems and a PCFG constituency parser.
+This directory contains the Question 4 implementation for the NLP Group Assignment. It combines three sub-systems into a real-time Streamlit text editor:
 
-**This module builds directly on Questions 1 and 3 — it reuses their trained
-models without retraining.**
+1. **Joint Word Segmentation & POS Tagging** (reused from Question 1)
+2. **Spelling Correction** (Method B / SymDel, reused from Question 3)
+3. **PCFG Constituency Parser & Language Model Grammar Checker** (Question 4)
 
 ---
 
-## Architecture
+## Project Structure
 
 ```
 Question-4/
-├── app.py                   # Streamlit entry point
-├── requirements.txt         # streamlit, nltk
-├── models/                  # Auto-created: PCFG cache
+├── app.py                # Main Streamlit dashboard
+├── requirements.txt      # Python dependencies
+├── models/
+│   └── q4_pcfg.pkl       # Pre-trained/cached PCFG model binary (~19MB)
 └── q4/
-    ├── __init__.py
-    ├── model_loader.py      # Loads Q1 + Q3 models (trains Q1 if needed)
-    ├── segmentation.py      # SEGMENT-ALERT: Q1 beam-search decoder wrapper
-    ├── spelling.py          # SPELL-ALERT:   Q3 SymDel corrector wrapper
-    ├── grammar.py           # GRAMMAR-ALERT: trigram PPL + real-word check
-    ├── pcfg.py              # PCFG training (Penn Treebank) + CKY parser
-    ├── tagset.py            # Universal → PTB tagset reconciliation
-    └── passage.py           # Random passage sampler + merge-token generator
+    ├── model_loader.py   # Loads Q1 and Q3 models
+    ├── passage.py        # Passage sampler and token merger (simulates missing space errors)
+    ├── segmentation.py   # Q1 DP segmentation check
+    ├── spelling.py       # Q3 SymDel spelling corrector check
+    ├── grammar.py        # Sliding window perplexity and real-word error check
+    ├── pcfg.py           # Penn Treebank PCFG trainer & Viterbi CKY parser
+    └── tagset.py         # Universal -> Penn Treebank POS tag reconciliation
 ```
 
 ---
 
-## Running
+## Setup & Running
 
-```bash
-cd Question-4
-pip install -r requirements.txt
-streamlit run app.py
-```
+1. **Virtual Environment Setup**:
+   ```bash
+   cd Question-4
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
-The first launch will:
-1. Train Q1 English models from the Brown corpus (~30s, saved to `Question-1/models/q1_english.pkl`)
-2. Train the PCFG from the Penn Treebank sample (~10s, saved to `models/q4_pcfg.pkl`)
-
-All subsequent launches load from the saved files instantly.
-
----
-
-## Design Decisions
-
-### Part 1: Simulated Typing
-
-| Parameter | Value | Justification |
-|-----------|-------|---------------|
-| Merge probability `p` | 0.08 | ~1.5 merges/sentence; 78% of sentences have ≥1 merge |
-| Grammar trigger `N` | 10 | Aligns with sentence length; fires ~once/sentence |
-| Candidate method | B (SymDel) | 10–50× faster than Method A (Q3 Phase 5 benchmark) |
-| PPL threshold | 300 | Tuned against Brown corpus held-out; configurable in UI |
-| Real-word margin | 2.0 nats | Same default as Q3 `SpellingCorrector` |
-
-### Part 2: PCFG Parser
-
-- **Training corpus**: Penn Treebank sample (`nltk.corpus.treebank`, ~3,900 sentences)
-- **Induction**: `nltk.induce_pcfg` over CNF-converted productions
-- **Parsing**: Probabilistic CKY (Viterbi) bottom-up chart parser
-- **Failure handling**: Returns `None` / "UNPARSEABLE" — no crashes
-
-### Tagset Reconciliation
-
-Q1's HMM uses the **universal tagset** (12 tags). The PCFG uses **Penn Treebank tags** (~36 tags).
-
-**Approach**: Static lookup table `UNIVERSAL_TO_PTB` in `q4/tagset.py`:
-```
-NOUN → NN,  VERB → VBD,  ADJ → JJ,  ADV → RB,  PRON → PRP,
-DET  → DT,  ADP  → IN,   CONJ → CC, PRT  → RP,  NUM  → CD
-```
-
-**Accuracy loss**: The PCFG receives coarser pre-terminals (e.g., all verbs
-become VBD regardless of tense). This reduces parse accuracy vs. using full
-PTB tags but requires zero retraining of Q1 models — the correct trade-off
-given the assignment constraint "reuse Q1's trained decoder as-is".
+2. **Run Streamlit Application**:
+   ```bash
+   streamlit run app.py
+   ```
 
 ---
 
-## Alert Types
+## Technical Notes
 
-| Alert | Trigger | Source models |
-|-------|---------|---------------|
-| `[SEGMENT-ALERT]` | Token not in Q1 vocab or unusually long | Q1 NgramLM + DecoderConfig |
-| `[SPELL-ALERT]` | Token still OOV after segmentation | Q3 SymDel index + unigram counts |
-| `[GRAMMAR-ALERT]` | Every 10 words: PPL > 300 or real-word score jump | Q1 trigram LM + Q3 bigram model |
-
-All three alerts display their processing latency in milliseconds.
+- **Tagset Reconciliation (`q4/tagset.py`)**: Maps Q1's 12-class Universal POS tags to Penn Treebank (PTB) tags required by the PCFG grammar.
+- **PCFG Model Size (`q4/pcfg.py`)**: Induced on `nltk.corpus.treebank` with rare rule filtering (`min_count=2`), producing a 19MB pickle model suitable for version control.
+- **Real-Time Latency**:
+  - Segmentation + Spelling Check: ~0.1 - 2.5 ms / token
+  - Grammar Check (N=10 window): ~0.9 ms / window

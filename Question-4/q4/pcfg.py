@@ -23,6 +23,8 @@ from q4.tagset import reconcile_tag_sequence
 
 PCFG_CACHE_PATH = Path(__file__).parent.parent / "models" / "q4_pcfg.pkl"
 
+NEG_INF = float("-inf")
+
 
 def _ensure_treebank():
     try:
@@ -102,13 +104,14 @@ def _get_indices(grammar: PCFG) -> tuple[dict, dict]:
     return binary_rules, lexical_rules
 
 
-def cky_parse(words: tuple[str, ...], tags: tuple[str, ...], grammar: PCFG) -> Optional[str]:
+def cky_parse(words: tuple[str, ...], tags: tuple[str, ...], grammar: PCFG) -> tuple[Optional[str], float]:
     """
     Probabilistic CKY Viterbi parser.
-    Returns bracketed string representation of the parse tree, or None if unparseable.
+    Returns the bracketed parse tree and its log probability, or (None, -inf)
+    if the sentence cannot be parsed.
     """
     if not words:
-        return None
+        return None, NEG_INF
 
     binary_rules, lexical_rules = _get_indices(grammar)
     n = len(words)
@@ -142,9 +145,10 @@ def cky_parse(words: tuple[str, ...], tags: tuple[str, ...], grammar: PCFG) -> O
 
     top = table[0][n - 1]
     if not top:
-        return None
+        return None, NEG_INF
 
     root = "S" if "S" in top else max(top, key=lambda s: top[s][0])
+    log_prob = top[root][0]
 
     def _trace(sym: str, i: int, j: int) -> str:
         entry = table[i][j].get(sym)
@@ -154,17 +158,18 @@ def cky_parse(words: tuple[str, ...], tags: tuple[str, ...], grammar: PCFG) -> O
         return f"({sym} {_trace(B, i, k)} {_trace(C, k + 1, j)})"
 
     try:
-        return _trace(root, 0, n - 1)
+        return _trace(root, 0, n - 1), log_prob
     except RecursionError:
-        return None
+        return None, NEG_INF
 
 
 def parse_sentence(words: tuple[str, ...], universal_tags: tuple[str, ...], grammar: PCFG) -> dict:
     ptb_tags = reconcile_tag_sequence(universal_tags)
-    parse_str = cky_parse(words, ptb_tags, grammar)
+    parse_str, log_prob = cky_parse(words, ptb_tags, grammar)
     return {
         "parseable": parse_str is not None,
         "parse": parse_str,
+        "log_prob": log_prob,
         "words": words,
         "ptb_tags": ptb_tags,
     }

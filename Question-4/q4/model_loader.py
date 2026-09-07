@@ -2,7 +2,8 @@
 model_loader.py - Model Loader for Q1 and Q3
 
 Loads pre-trained Q1 (trigram LM, HMM tagger) and Q3 (vocab, SymDel index, SpellingCorrector)
-models into memory for Q4. Trains Q1 on first launch if model binary is missing.
+models into memory for Q4, along with Q4's own add-k grammar models. Trains Q1 on
+first launch if model binary is missing.
 """
 from __future__ import annotations
 
@@ -95,8 +96,11 @@ def load_all_models() -> dict[str, Any]:
     from candidates import build_symdel_index
     from corrector import SpellingCorrector
 
+    from q4.ngram_lm import load_grammar_lms
+
     q1 = load_q1_models()
     q3 = load_q3_models()
+    q4_lms = load_grammar_lms()
     symdel = build_symdel_index(q3["vocab"])
 
     corrector = SpellingCorrector(
@@ -122,5 +126,10 @@ def load_all_models() -> dict[str, Any]:
         "q3_k": q3["k"],
         "q3_symdel": symdel,
         "corrector": corrector,
+        "q4_bigram": q4_lms["bigram"],
+        "q4_trigram": q4_lms["trigram"],
+        "q4_floors": q4_lms["floors"],
+        "q4_bigram_k": q4_lms["bigram_k"],
+        "q4_trigram_k": q4_lms["trigram_k"],
     }
     return _CACHE

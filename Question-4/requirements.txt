@@ -1,0 +1,11 @@
+# Question 4 — Live NLP Editor
+# Python >= 3.10 required
+# Install: pip install -r requirements.txt
+
+streamlit==1.63.0
+nltk==3.10.3
+
+# Transitive pinned deps (installed automatically with above)
+numpy>=1.24.0
+pandas>=1.5.0
+altair>=5.0.0

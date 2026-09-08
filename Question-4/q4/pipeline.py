@@ -27,8 +27,14 @@ def clean_word(token: str) -> str:
 
 
 def ends_sentence(token: str) -> bool:
-    """True when a raw token carries sentence-final punctuation."""
-    return token.rstrip(_CLOSING_MARKS).endswith(tuple(SENTENCE_ENDINGS))
+    """True when a raw token carries sentence-final punctuation.
+
+    A single letter before the full stop is an initial rather than the end of a
+    sentence, which keeps names like "robert e. lee" in one piece.
+    """
+    if not token.rstrip(_CLOSING_MARKS).endswith(tuple(SENTENCE_ENDINGS)):
+        return False
+    return len(clean_word(token)) > 1
 
 
 @dataclass

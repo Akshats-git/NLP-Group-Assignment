@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Sequence
 
 from q4.grammar import GrammarResult, TRIGGER_N
 from q4.pipeline import Alert, LiveDocument, check_token, check_window

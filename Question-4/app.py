@@ -380,7 +380,7 @@ else:
     st.caption(
         "PCFG and n-gram columns are per-word log probabilities. The chosen method is the"
         " parser when it finds a parse that is not a probability outlier, the trigram when"
-        f" it has seen at least 80 percent of the sentence, and the bigram otherwise."
+        " it has seen at least 80 percent of the sentence, and the bigram otherwise."
     )
 
     left, right = st.columns(2)

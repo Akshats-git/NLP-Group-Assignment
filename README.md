@@ -12,7 +12,7 @@ setup instructions and report.
 | [`Question-1/`](Question-1/) | Word segmentation and POS tagging on unspaced text, English and Spanish. | [REPORT_Q1.md](Question-1/REPORT_Q1.md) |
 | [`Question-2/`](Question-2/) | Arc-standard transition-based dependency parser. | [REPORT_Q2.md](Question-2/REPORT_Q2.md) |
 | [`Question-3/`](Question-3/) | Spelling corrector for non-word and real-word errors, with the Speed Demon benchmark and a terminal app. | [REPORT_Q3.md](Question-3/REPORT_Q3.md) |
-| [`Question-4/`](Question-4/) | Live Streamlit editor that runs the Q1 decoder, the Q3 corrector and a PCFG parser over one text stream. | [REPORT_Q4.md](Question-4/REPORT_Q4.md) |
+| [`Question-4/`](Question-4/) | Live Streamlit editor that runs the Q1 decoder, the Q3 corrector and a PCFG parser over one text stream. Deployed at [nlp-live-editor.streamlit.app](https://nlp-live-editor.streamlit.app/). | [REPORT_Q4.md](Question-4/REPORT_Q4.md) |
 
 Each folder has its own README with setup and usage instructions. Question 4 reuses the
 trained models from Questions 1 and 3 rather than retraining them, so set those two up
@@ -30,27 +30,29 @@ first if you want to run it.
 
 ## Contributions
 
-Each member led one question end to end (implementation, training/evaluation, and
-the report), with Akshat additionally handling the Q4 grammar layer, cross-question
-integration and a final audit pass across all four questions.
+Each member led one question end to end: implementation, training and evaluation, and
+the report.
 
-- **Shivam Singh — Question 1 (Word Segmentation & POS Tagging):** unspaced-text
-  segmentation and POS tagging pipeline for English and Spanish, model training and
-  evaluation, and the report.
-- **Ayush Khelwal — Question 2 (Dependency Parsing):** arc-standard transition-based
-  parser — CoNLL-U parsing, oracle simulator, feature extraction, classifier training,
-  LAS evaluation, and the report.
-- **Keshav Mishra — Question 3 (Spelling Correction):** non-word and real-word error
-  correction — corpus/language models, candidate generation, evaluation and speed
-  benchmarking, the interactive CLI, and the report.
-- **Rishi Kharya — Question 4 (Live Editor, initial build):** Streamlit editor
-  scaffolding, integration of the Q1 decoder and Q3 corrector, and the PCFG parser.
-- **Akshat Gupta — Question 4 (grammar layer & integration) and repo-wide:** the
-  shared n-gram (bigram/trigram) grammar models, the scoring/decision pipeline, the
-  Speed Demon benchmark, the Q4 experiment sweep and report; plus the top-level repo
-  reorganization and a final cross-question audit (fixing data-setup, missing report,
-  threshold tuning, and a Q1/Q4 model-artifact bug) to bring all four questions to a
-  consistent, working state.
+**Shivam Singh** built Question 1, the word segmentation and POS tagging pipeline for
+English and Spanish, including training and evaluation and the report.
+
+**Ayush Khelwal** built Question 2, the arc-standard dependency parser: CoNLL-U parsing,
+the oracle simulator, feature extraction, classifier training, LAS evaluation, and the
+report.
+
+**Keshav Mishra** built Question 3, the spelling corrector: corpus and language models,
+both candidate-generation methods, non-word and real-word correction, evaluation and the
+Speed Demon benchmark, the interactive CLI, and the report.
+
+**Rishi Kharya** built the first working version of Question 4: the Streamlit editor
+scaffolding, wiring in the Q1 decoder and Q3 corrector, and the PCFG parser.
+
+**Akshat Gupta** took Question 4 the rest of the way (the shared n-gram grammar models,
+the scoring and method-selection pipeline, the Speed Demon benchmark, the experiment
+sweep, the Streamlit Cloud deployment, and the report), reorganized the top-level repo,
+and ran a final audit across all four questions that fixed a broken data-setup step, a
+missing report, an under-tuned threshold, and a bug where Q4 could silently overwrite
+Q1's trained model.
 
 ## Repository conventions
 

@@ -4,13 +4,11 @@ Training Pipeline
 Loads the CoNLL-U training data, runs the Arc-Standard oracle to generate
 training instances, extracts features, and trains a scikit-learn classifier.
 
-Classifier Choice: Logistic Regression (multinomial)
-  - Handles multi-class classification efficiently
-  - Fast training on large datasets with sparse features
-  - Works well with one-hot encoded categorical features (POS tags)
-  - Interpretable model suitable for academic assignments
-  - Preferred over SVM for large numbers of classes
-  - Preferred over Random Forest for training speed
+Classifier choice: Logistic Regression (multinomial). It handles the
+88-way multi-class problem efficiently, trains fast on a large sparse
+one-hot feature matrix, and stays interpretable, which matters more here
+than squeezing out extra accuracy. It was picked over SVM (too slow with
+this many classes) and Random Forest (slower to train at this scale).
 
 Usage:
     python train.py

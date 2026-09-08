@@ -4,14 +4,7 @@ A data-driven transition-based dependency parser using the **Arc-Standard** tran
 
 ## Overview
 
-This project implements a complete pipeline for transition-based dependency parsing:
-
-1. **CoNLL-U Parser** — reads Universal Dependencies `.conllu` files
-2. **Oracle Simulator** — generates training data from gold-standard trees using the Arc-Standard transition system
-3. **Feature Extractor** — extracts 4 POS-tag features from parser configurations
-4. **Classifier** — Logistic Regression (scikit-learn) trained to predict transitions
-5. **Parser** — applies predicted transitions with validity checking
-6. **Evaluator** — computes Labeled Attachment Score (LAS) on the dev set
+The pipeline has six pieces, each in its own module. A CoNLL-U parser reads the Universal Dependencies `.conllu` files. An oracle simulator walks each gold-standard tree with the Arc-Standard transition system and records what a perfect parser would have done at every step, which is how the training data gets built. A feature extractor pulls 4 POS-tag features out of each parser configuration, and those features feed a Logistic Regression classifier (scikit-learn) that learns to predict transitions. The parser itself applies the predicted transitions with validity checking so it can't crash on an illegal move, and an evaluator computes Labeled Attachment Score (LAS) on the dev set at the end.
 
 ## Dataset
 
@@ -33,7 +26,7 @@ ln -sf UD_English-EWT/en_ewt-ud-dev.conllu data/en_ewt-ud-dev.conllu
 ```
 
 Note: the symlink target is resolved relative to the symlink's own directory
-(`data/`), not your shell's working directory — so the target must be
+(`data/`), not your shell's working directory, so the target must be
 `UD_English-EWT/...`, not `data/UD_English-EWT/...`, or you'll get a dangling
 link.
 
@@ -99,6 +92,4 @@ Missing positions use the sentinel value `NONE`.
 
 ## Arc-Standard Transitions
 
-- **SHIFT**: Move the first word from the buffer to the top of the stack
-- **LEFT-ARC(label)**: Top of stack becomes head of second on stack; second is popped
-- **RIGHT-ARC(label)**: Second on stack becomes head of top; top is popped
+SHIFT moves the first word from the buffer to the top of the stack. LEFT-ARC(label) makes the top of the stack the head of the second item on the stack, then pops that second item. RIGHT-ARC(label) does the mirror image: the second item on the stack becomes the head of the top item, and the top item gets popped.

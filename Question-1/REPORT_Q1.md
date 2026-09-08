@@ -36,11 +36,11 @@ which rules out "Spanish words are longer" as an explanation for anything below.
 | Measure | English | Spanish |
 | --- | --- | --- |
 | Segmentation, greedy longest-match (baseline) | 66.71% | 50.20% |
-| Segmentation, trigram DP + beam | **95.55%** | **91.59%** |
+| Segmentation, trigram DP + beam | **95.61%** | **91.59%** |
 | Tagging on gold segmentation, most-frequent-tag (baseline) | 93.64% | 88.72% |
 | Tagging on gold segmentation, trigram HMM | **96.19%** | **93.75%** |
 | End to end, greedy + most-frequent (baseline) | 68.68% | 53.21% |
-| End to end, DP segment then HMM tag | **92.56%** | **86.75%** |
+| End to end, DP segment then HMM tag | **92.62%** | **86.75%** |
 | Agreement reproduced (gold words) | n/a | 96.46% (2,625 pairs) |
 
 Segmentation is scored by token F1 (a predicted token counts only if its exact
@@ -218,10 +218,10 @@ normalised away) and PRON/DET (42).
 | Task | Baseline | Model | Absolute gain | Error reduction |
 | --- | --- | --- | --- | --- |
 | **English** | | | | |
-| Segmentation (token F1) | 66.71% | 95.55% | +28.85 pp | **86.7%** |
+| Segmentation (token F1) | 66.71% | 95.61% | +28.91 pp | **86.8%** |
 | Segmentation (exact sentences) | 16.25% | 66.50% | +50.25 pp | 60.0% |
 | Tagging (gold segmentation) | 93.64% | 96.19% | +2.55 pp | 40.1% |
-| End to end | 68.68% | 92.56% | +23.88 pp | **76.3%** |
+| End to end | 68.68% | 92.62% | +23.94 pp | **76.4%** |
 | **Spanish** | | | | |
 | Segmentation (token F1) | 50.20% | 91.59% | +41.39 pp | **83.1%** |
 | Segmentation (exact sentences) | 5.75% | 38.75% | +33.00 pp | 35.0% |
@@ -245,11 +245,14 @@ the DP decoder.
 residue of genuinely ambiguous tokens. Reporting only the end-to-end figure would
 badly overstate what the tagging model contributes.
 
-**The cost is real.** Greedy runs in 0.10 ms/sentence against 92 ms for the DP
-decoder in English (0.16 vs 313 ms in Spanish) - three orders of magnitude for
-those 29-41 points of F1. Beam search is what makes that affordable: at width 8 it
-is identical to exact DP to four significant figures (96.53% vs 96.53% English,
-92.91% vs 92.91% Spanish) while running 10-20x faster.
+**The cost is real.** Greedy runs in 0.04 ms/sentence against 8 ms for the deployed
+beam decoder in English (0.06 vs 25 ms in Spanish) - roughly 200x and 400x slower
+respectively, for those 29-41 points of F1. Beam search is what makes that
+affordable: checked against brute-force exact DP on a 40-sentence sample, it comes
+within 0.3 points of exact accuracy in English (96.82% beam vs 96.53% exact, at the
+selected width of 4) and matches it exactly in Spanish (92.91% vs 92.91%, at the
+selected width of 8), while running about 40-50x faster than exact DP (8 ms vs
+391 ms in English, 25 ms vs 947 ms in Spanish).
 
 ## 5. Known failures and caveats
 

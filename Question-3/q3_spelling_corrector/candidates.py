@@ -1,41 +1,42 @@
 """
-candidates.py — Q3 Phase 3 (revised)
+Candidate generation for the spelling corrector.
 
-Candidate generation only. No ranking, no correction decisions, no
-evaluation — this module's job is purely: given a (possibly misspelled)
-word, return the set of vocabulary words that could be the intended word,
-at edit distance <= 1 (Damerau-Levenshtein: deletion, insertion,
-replacement, or adjacent transposition).
+This module only generates candidates. Given a (possibly misspelled) word,
+it returns the set of vocabulary words that could be the intended word, at
+edit distance <= 1 (Damerau-Levenshtein: deletion, insertion, replacement,
+or adjacent transposition). No ranking, no correction decisions, no
+evaluation - those live in corrector.py, evaluation.py, and benchmark.py.
 
 Two independent methods are implemented, per the assignment:
 
-    Method A — brute-force edit-distance-1 generation
+    Method A - brute-force edit-distance-1 generation
         Generate every string reachable from `word` by one deletion,
         transposition, replacement, or insertion, then keep only the ones
-        that are real vocabulary words. Candidate STRINGS are generated
+        that are real vocabulary words. Candidate strings are generated
         first, filtered against the vocabulary second.
 
-    Method B — Symmetric Delete (SymDel)
+    Method B - Symmetric Delete (SymDel)
         Precompute, once, a mapping from every one-character deletion of
         every vocabulary word back to that vocabulary word (the "index").
-        At query time, only the (much smaller) one-character deletions of
-        the misspelled word are generated and looked up in that index —
-        this never enumerates the full edit space (no explicit
-        replacement/insertion string generation) at query time, which is
-        the source of its speed advantage (measured in Phase 5).
+        At query time, only the much smaller set of one-character
+        deletions of the misspelled word is generated and looked up in
+        that index. It never enumerates the full edit space at query
+        time (no explicit replacement/insertion string generation), which
+        is the source of its speed advantage (see benchmark.py).
 
-        Deletion-based matching alone directly guarantees an UPPER BOUND
-        on edit distance: if a string D is obtained by deleting dA
-        characters from word A and dB characters from word B, then
-        edit_distance(A, B) <= dA + dB. For maxEditDistance = 1:
-          - dA + dB <= 1 (i.e. one side deletes 0, the other deletes 1)
-            guarantees true edit distance is EXACTLY 1 (no verification
-            needed) — this captures pure insertion/deletion errors.
+        Deletion-based matching alone bounds the edit distance: if a
+        string D is obtained by deleting dA characters from word A and dB
+        characters from word B, then edit_distance(A, B) <= dA + dB. For
+        maxEditDistance = 1:
+          - dA + dB <= 1 (one side deletes 0, the other deletes 1)
+            guarantees the true edit distance is exactly 1, so no
+            verification is needed. This captures pure insertion/deletion
+            errors.
           - dA = dB = 1 (sum = 2) only guarantees edit distance <= 2, not
             exactly 1. This is the combination that surfaces substitution
             and transposition matches (a single differing/swapped position
             deletes to the same string from both sides), so those
-            candidates ARE generated this way, but must be verified with a
+            candidates are generated this way but must be verified with a
             direct, cheap edit-distance-<=1 check before being accepted.
             This verification step is standard in symmetric-delete
             implementations (e.g. SymSpell) and is what lets Method B
@@ -43,10 +44,10 @@ Two independent methods are implemented, per the assignment:
             and transposition, without ever falling back to Method A's
             brute-force generation.
 
-Both methods return the SAME kind of result — a set[str] of vocabulary
-words at edit distance <= 1 from the input — but reach it very
+Both methods return the same kind of result, a set[str] of vocabulary
+words at edit distance <= 1 from the input, but reach it very
 differently. Ranking one candidate as "the" correction (by unigram
-frequency, or by bigram context) is Phase 4's job, not this module's.
+frequency, or by bigram context) is corrector.py's job, not this module's.
 """
 
 from typing import Dict, List, Set
@@ -57,7 +58,7 @@ ALPHABET = "abcdefghijklmnopqrstuvwxyz"
 
 
 # ---------------------------------------------------------------------------
-# Method A — brute-force edit-distance-1 generation
+# Method A - brute-force edit-distance-1 generation
 # ---------------------------------------------------------------------------
 
 def _edits1(word: str) -> Set[str]:
@@ -70,7 +71,7 @@ def _edits1(word: str) -> Set[str]:
         replacement   : substitute one character with another letter
         insertion     : insert one letter at any position
 
-    This produces candidate STRINGS (not necessarily real words) — filtering
+    This produces candidate strings, not necessarily real words. Filtering
     against the vocabulary happens separately in `edit_distance_1_candidates`.
 
     Deterministic: splits are generated left-to-right, and the alphabet is
@@ -122,13 +123,13 @@ def edit_distance_1_candidates(word: str, vocab: Set[str]) -> Set[str]:
 
 
 # ---------------------------------------------------------------------------
-# Method B — Symmetric Delete (SymDel)
+# Method B - Symmetric Delete (SymDel)
 # ---------------------------------------------------------------------------
 
 def _deletions(word: str) -> Set[str]:
     """
     Generate all one-character deletions of `word` (strictly shorter
-    variants only — `word` itself is not included).
+    variants only, `word` itself is not included).
     For a 1-character word, this returns {""}.
     For an empty word, this returns an empty set (no deletion is possible).
     """
@@ -139,8 +140,8 @@ def _deletions(word: str) -> Set[str]:
 
 def build_symdel_index(vocab: Set[str]) -> Dict[str, List[str]]:
     """
-    Preprocessing step for Method B (run once, offline, after the
-    vocabulary is built — NOT at query time).
+    Preprocessing step for Method B. Run once, offline, after the
+    vocabulary is built, not at query time.
 
     For every vocabulary word, compute its one-character deletions and map
     each deletion back to the list of vocabulary word(s) that produced it,
@@ -169,7 +170,7 @@ def build_symdel_index(vocab: Set[str]) -> Dict[str, List[str]]:
 def _is_edit_distance_le_1(a: str, b: str) -> bool:
     """
     Direct (non-DP) check for whether `a` and `b` are at Damerau-Levenshtein
-    edit distance <= 1 — i.e. identical, or reachable from one another by
+    edit distance <= 1, i.e. identical, or reachable from one another by
     exactly one deletion, insertion, replacement, or adjacent transposition.
 
     Implemented directly rather than with a full Levenshtein DP table
@@ -178,7 +179,7 @@ def _is_edit_distance_le_1(a: str, b: str) -> bool:
     it runs once per coarse candidate inside symdel_candidates.
 
     This is only needed to verify the "sum = 2" deletion matches (see
-    module docstring) — matches found with sum <= 1 are exact by
+    module docstring). Matches found with sum <= 1 are exact by
     construction and never need this check.
     """
     if a == b:
@@ -217,15 +218,15 @@ def symdel_candidates(
     combinations that can produce a true edit distance of 1 (see module
     docstring for the dA/dB reasoning):
 
-    1. dA=0, dB=1 — `word` itself is looked up directly in the index.
+    1. dA=0, dB=1 - `word` itself is looked up directly in the index.
        Catches the case where `word` is missing one character relative to
        the intended (longer) vocabulary word. Exact match, no verification
        needed.
-    2. dA=1, dB=0 — each one-character deletion of `word` is checked
-       directly against the vocabulary SET (not the index). Catches the
+    2. dA=1, dB=0 - each one-character deletion of `word` is checked
+       directly against the vocabulary set (not the index). Catches the
        case where `word` has one extra character relative to the intended
        (shorter) vocabulary word. Exact match, no verification needed.
-    3. dA=1, dB=1 — each one-character deletion of `word` is looked up in
+    3. dA=1, dB=1 - each one-character deletion of `word` is looked up in
        the index (which stores one-character deletions of vocab words).
        A shared deletion here only guarantees edit distance <= 2, so every
        match from this step is verified with `_is_edit_distance_le_1`
@@ -234,9 +235,9 @@ def symdel_candidates(
        differing/swapped character position deletes to an identical string
        from both sides.
 
-    All three steps only ever generate deletions of `word` (never of
-    vocabulary words at query time — those were precomputed once in
-    build_symdel_index) and use O(1) average-case dict/set lookups, which
+    All three steps only ever generate deletions of `word`, never of
+    vocabulary words at query time (those were precomputed once in
+    build_symdel_index), and use O(1) average-case dict/set lookups, which
     is what keeps this method fast relative to Method A's full string
     enumeration.
 
@@ -261,7 +262,7 @@ def symdel_candidates(
       other deletion key/set-membership check.
     - Repeated characters (e.g. "letter"): multiple deletion positions can
       produce the same deletion string (e.g. deleting either 't' in
-      "letter" gives "leter") — this is naturally deduplicated since
+      "letter" gives "leter"); this is naturally deduplicated since
       `_deletions` returns a set.
     - Duplicate candidates across the three steps are naturally
       deduplicated by using a `set` as the accumulator.
@@ -282,8 +283,8 @@ def symdel_candidates(
         if d in vocab:
             candidates.add(d)
 
-    # Step 3 (dA=1, dB=1): substitution / transposition candidates —
-    # coarse matches must be verified before acceptance.
+    # Step 3 (dA=1, dB=1): substitution / transposition candidates.
+    # Coarse matches must be verified before acceptance.
     coarse_candidates: Set[str] = set()
     for d in word_deletions:
         coarse_candidates.update(symdel_index.get(d, []))

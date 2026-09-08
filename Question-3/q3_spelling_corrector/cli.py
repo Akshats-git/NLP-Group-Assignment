@@ -1,20 +1,19 @@
 """
-cli.py — Q3 Phase 6
+Interactive terminal interface for the spelling corrector.
 
-Continuous terminal interface for the spelling corrector. This module
-contains NO correction logic of its own — it only:
-    1. loads the already-trained Phase 2 artifacts (models/q3_language_models.pkl)
-    2. builds the Phase 3 SymDel index once, at startup
-    3. constructs a corrector.SpellingCorrector (Phase 4)
+This module holds no correction logic of its own. It only:
+    1. loads the already-trained artifacts (models/q3_language_models.pkl)
+    2. builds the SymDel index once, at startup
+    3. constructs a corrector.SpellingCorrector
     4. loops: read a sentence, call corrector.correct_sentence(), print
        the result, measure latency, repeat until "exit"
 
 Nothing here retrains or rebuilds the Brown language model, duplicates
-candidate generation, or reimplements correction decisions — all of that
+candidate generation, or reimplements correction decisions; all of that
 is reused as-is from corpus_models.py, candidates.py, and corrector.py.
 
-Not implemented here (out of scope for Phase 6): evaluation, benchmarking,
-Streamlit/Q4 integration, POS tagging, parsing.
+Out of scope for this module: evaluation, benchmarking, Streamlit/Q4
+integration, POS tagging, parsing.
 """
 
 import time
@@ -28,9 +27,9 @@ EXIT_COMMAND = "exit"
 
 
 # ---------------------------------------------------------------------------
-# Startup: model loading + corrector construction (kept separate from the
-# input loop, per the Phase 6 architecture requirement, so Q4 can later
-# call create_corrector() on its own without pulling in the CLI loop).
+# Startup: model loading + corrector construction. Kept separate from the
+# input loop so Q4 can call create_corrector() on its own without pulling
+# in the CLI loop.
 # ---------------------------------------------------------------------------
 
 def create_corrector(
@@ -38,20 +37,20 @@ def create_corrector(
     real_word_threshold: float = 1.1,
 ) -> SpellingCorrector:
     """
-    Load the trained Phase 2 artifacts, build the Phase 3 SymDel index,
-    and construct a SpellingCorrector — nothing is trained or rebuilt
-    here, only loaded/assembled.
+    Load the trained artifacts, build the SymDel index, and construct a
+    SpellingCorrector. Nothing is trained or rebuilt here, only
+    loaded/assembled.
 
     Parameters
     ----------
     method : str
         Candidate-generation method for the corrector. Defaults to "B"
-        (Symmetric Delete) since it was demonstrated to be the faster
-        method in the Phase 5 Speed Demon benchmark — appropriate for a
-        live, interactive CLI where per-sentence latency is visible to
-        the user. "A" and "both" remain fully supported by
-        SpellingCorrector and can be passed here unchanged; this default
-        does not remove or restrict either option.
+        (Symmetric Delete) since it was the faster method in the Speed
+        Demon benchmark, which matters for a live, interactive CLI where
+        per-sentence latency is visible to the user. "A" and "both"
+        remain fully supported by SpellingCorrector and can be passed
+        here unchanged; this default does not remove or restrict either
+        option.
     real_word_threshold : float
         Passed straight through to SpellingCorrector (see corrector.py
         for the log-probability-margin explanation).
@@ -59,17 +58,15 @@ def create_corrector(
     Returns
     -------
     SpellingCorrector
-        Ready to use — callers should reuse this single instance across
+        Ready to use. Callers should reuse this single instance across
         every sentence in a session rather than rebuilding it per call.
 
     Notes
     -----
     load_models() returns a dict with keys "vocab", "unigram_counts",
-    "bigram_counts", "vocab_size", "k" (see corpus_models.save_models);
+    "bigram_counts", "vocab_size", "k" (see corpus_models.save_models).
     build_symdel_index(vocab) takes just the vocab set and returns the
-    deletion-index dict SpellingCorrector expects. Both integration
-    points match SpellingCorrector's constructor signature from Phase 4
-    without any changes needed on either side.
+    deletion-index dict SpellingCorrector expects.
     """
     models = load_models()
     vocab = models["vocab"]
@@ -78,8 +75,9 @@ def create_corrector(
     vocab_size = models["vocab_size"]
     k = models["k"]
 
-    # Built once, here, at startup — never inside the per-sentence timed
-    # region in run_cli(), per the latency-measurement requirement.
+    # Built once, here, at startup, never inside the per-sentence timed
+    # region in run_cli() (that would leak setup cost into the latency
+    # measurement).
     symdel_index = build_symdel_index(vocab)
 
     return SpellingCorrector(
@@ -95,14 +93,14 @@ def create_corrector(
 def render_highlighted(corrected_sentence: str, metadata: List[Dict]) -> str:
     """
     Rebuild the corrected sentence with each changed word wrapped in
-    **asterisks**, per the assignment's Part 5 requirement to visually
-    highlight changed words.
+    **asterisks**, per the assignment's requirement to visually highlight
+    changed words.
 
     `corrected_sentence.split()` and `metadata` are guaranteed to line up
     one-to-one and in order: correct_sentence() builds both from the same
     whitespace-split `raw_tokens` list, substituting only the token core
     (punctuation/casing preserved), so no re-tokenization or fuzzy
-    matching is needed here — position i in one is position i in the
+    matching is needed here. Position i in one is position i in the
     other.
 
     Returns
@@ -114,8 +112,8 @@ def render_highlighted(corrected_sentence: str, metadata: List[Dict]) -> str:
     tokens = corrected_sentence.split()
     if len(tokens) != len(metadata):
         # Defensive fallback (should not happen given the 1:1 contract
-        # above) — return the sentence unhighlighted rather than
-        # mis-wrap the wrong token.
+        # above): return the sentence unhighlighted rather than mis-wrap
+        # the wrong token.
         return corrected_sentence
     return " ".join(
         f"**{tok}**" if entry.get("changed") else tok
@@ -130,10 +128,10 @@ def highlight_changes(metadata: List[Dict]) -> str:
 
     Each metadata entry already carries "original", "corrected", and
     "changed" (set by correct_nonword/correct_realword, or the
-    pass-through record for non-alphabetic tokens) — this function reads
+    pass-through record for non-alphabetic tokens). This function reads
     those fields directly rather than re-deriving what changed, so no
     change to correct_sentence()'s output format was necessary to
-    support highlighting (see integration notes in the Phase 6 write-up).
+    support highlighting.
 
     Returns
     -------
@@ -166,12 +164,12 @@ def run_cli(
 
     `input_func` and `output_func` are injectable (defaulting to the
     real `input`/`print`) so this loop has no hidden global state and can
-    be driven programmatically — e.g. by a test harness, or later by a
+    be driven programmatically, e.g. by a test harness, or later by a
     Q4 wrapper that wants the same loop behaviour with a different I/O
-    surface — without modifying this function.
+    surface, without modifying this function.
 
     Per-sentence latency is measured with time.perf_counter() around
-    exactly the `corrector.correct_sentence(sentence)` call — nothing
+    exactly the `corrector.correct_sentence(sentence)` call. Nothing
     else (not the print statements, not the input read) is included in
     the timed region, and model/index construction already happened
     before run_cli was ever called (see create_corrector), so startup
@@ -181,7 +179,7 @@ def run_cli(
         try:
             raw = input_func("> ")
         except EOFError:
-            # Stdin closed (e.g. piped input ran out) — exit cleanly
+            # Stdin closed (e.g. piped input ran out); exit cleanly
             # rather than crashing.
             output_func("")
             output_func("End of input. Goodbye.")
@@ -215,7 +213,7 @@ def run_cli(
 def main() -> None:
     """
     CLI entry point. Wrapped in its own function (rather than running at
-    import time) so `import cli` — as Q4 will do — never starts the
+    import time) so `import cli`, as Q4 will do, never starts the
     interactive loop as a side effect; only `python cli.py` does.
     """
     print("Q3 Spelling Corrector")

@@ -11,6 +11,8 @@ Once the passage is finished the editor scores every sentence with the parser an
 n-gram models, applies a documented rule to pick which score to trust, and reports the result
 as a per-sentence table. The written analysis is in [REPORT_Q4.md](REPORT_Q4.md).
 
+**Live deployment:** [nlp-live-editor.streamlit.app](https://nlp-live-editor.streamlit.app/)
+
 ---
 
 ## File Structure & Module Overview
@@ -69,7 +71,7 @@ tags, the alerts and the latency. `LiveDocument` accumulates the result into sen
 keeps the merge and correction counts that Part 4 reports.
 
 #### A. Segmentation Alert (`q4/segmentation.py`)
-- Evaluates incoming tokens using Q1's beam-search decoder with the settings Q1 selected: maximum word length 19, beam width 8, alpha and beta 1.0.
+- Evaluates incoming tokens using Q1's beam-search decoder with the settings Q1 selected: maximum word length 19, beam width 4, alpha and beta 1.0.
 - Compares the log-likelihood of splitting the token against keeping it whole.
 - If splitting wins it fires **`[SEGMENT-ALERT]`** and outputs the split words with their Q1 Universal POS tags.
 

@@ -1,15 +1,16 @@
 """
-evaluation.py — Q3 Phase 5 (part 1: accuracy evaluation)
+Accuracy evaluation for the spelling corrector.
 
 Builds a reproducible non-word and real-word test set from the Brown
-Corpus, then evaluates Method A and Method B on the EXACT SAME test
-cases via the existing SpellingCorrector — no candidate-generation or
+Corpus, then evaluates Method A and Method B on the exact same test
+cases via the existing SpellingCorrector. No candidate-generation or
 correction logic is duplicated here.
 
-This module does NOT:
-    - build/train the vocabulary, unigram model, bigram model (Phase 2)
-    - implement candidate generation (Phase 3)
-    - implement correction decisions (Phase 4)
+This module does not:
+    - build/train the vocabulary, unigram model, bigram model
+      (corpus_models.py)
+    - implement candidate generation (candidates.py)
+    - implement correction decisions (corrector.py)
     - implement the Speed Demon benchmark (that's benchmark.py)
     - implement a CLI or Q4 integration
 
@@ -47,7 +48,7 @@ class TestCase:
     corrupted_word : the single-edit-corrupted word actually fed to the
         corrector.
     edit_type : one of "deletion", "insertion", "replacement",
-        "transposition" — which operation produced corrupted_word.
+        "transposition"; which operation produced corrupted_word.
     """
 
     sentence_words: List[str]
@@ -58,7 +59,7 @@ class TestCase:
 
 
 # ---------------------------------------------------------------------------
-# Single-edit corruption (reused by benchmark.py too — not duplicated there)
+# Single-edit corruption (reused by benchmark.py too, not duplicated there)
 # ---------------------------------------------------------------------------
 
 def _apply_deletion(word: str, rng: random.Random) -> Optional[str]:
@@ -119,15 +120,15 @@ def corrupt_word_single_edit(
     """
     Attempt to produce a single-edit corruption of `word` satisfying the
     requested category:
-        want_nonword=True  -> corrupted word must NOT be in vocab
-        want_nonword=False -> corrupted word MUST be in vocab and != word
+        want_nonword=True  -> corrupted word must not be in vocab
+        want_nonword=False -> corrupted word must be in vocab and != word
                                (a valid real-word error)
 
     Randomly tries edit types (deletion/insertion/replacement/
     transposition) and positions, up to `max_attempts` times, using the
     supplied `rng` (so the whole process is reproducible given a fixed
     seed and a fixed sequence of calls). Returns None if no valid
-    corruption is found within the attempt budget — callers are expected
+    corruption is found within the attempt budget; callers are expected
     to then try a different word (this function never invents an invalid
     case).
 
@@ -166,7 +167,7 @@ def _build_case(
     Tries each word position in a randomized (but rng-reproducible) order
     until one produces a valid corruption of the requested type. Returns
     None if no word in the sentence can produce a valid case (caller then
-    falls back to a different sentence — see generate_test_sets).
+    falls back to a different sentence; see generate_test_sets).
 
     need_context=True (real-word case) additionally requires the sentence
     to have at least 2 words, since real-word correction needs at least
@@ -214,13 +215,13 @@ def generate_test_sets(
     Parameters
     ----------
     cleaned_sentences : list[list[str]]
-        Sentences already cleaned to lowercased alphabetic tokens — pass
+        Sentences already cleaned to lowercased alphabetic tokens. Pass
         the output of corpus_models.load_brown_sentences() so tokens
-        match how the vocab/unigram/bigram models were built in Phase 2.
-        (This module does not re-clean sentences itself, to avoid
-        duplicating utils.clean_sentence's logic.)
+        match how the vocab/unigram/bigram models were built. (This
+        module does not re-clean sentences itself, to avoid duplicating
+        utils.clean_sentence's logic.)
     vocab : set[str]
-        Trained vocabulary (Phase 2).
+        Trained vocabulary, from corpus_models.
     fraction : float
         Target fraction of sentences to draw a test case from (default
         0.1 = 10%, per the assignment). Ignored if target_count is given.
@@ -230,14 +231,15 @@ def generate_test_sets(
         Explicit target case count, overriding `fraction`. Pass 5734 to
         match the assignment's literal "10% of 57,340 sentences" figure
         exactly, regardless of the exact sentence count NLTK reports in
-        your environment (see explanation in the Phase 5 write-up).
+        your environment (see README.md section 7 for why this count is
+        environment-dependent).
 
     Returns
     -------
     (nonword_cases, realword_cases) : (list[TestCase], list[TestCase])
         Each list has up to `target_count` entries. If the corpus is
         exhausted before reaching the target (unlikely for Brown), the
-        lists are simply shorter — no invalid cases are ever included.
+        lists are simply shorter; no invalid cases are ever included.
 
     Reproducibility
     ----------------
@@ -298,7 +300,7 @@ def evaluate_nonword(
     Accuracy = (# cases where corrector.correct_nonword(corrupted_word)
                  returns the original word) / total cases.
 
-    Reuses corrector.correct_nonword() directly — no correction logic is
+    Reuses corrector.correct_nonword() directly; no correction logic is
     reimplemented here.
     """
     correct = 0
@@ -359,7 +361,7 @@ def format_evaluation_report(report: Dict[str, Dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Manual orchestration entry point (NOT executed by Claude — run yourself)
+# Manual orchestration entry point. Not run automatically; run yourself.
 # ---------------------------------------------------------------------------
 
 def run_full_evaluation(
@@ -369,12 +371,12 @@ def run_full_evaluation(
     real_word_threshold: float = 1.1,
 ) -> Dict[str, Dict]:
     """
-    Full Phase 5 accuracy pipeline: load trained Phase 2 artifacts, build
-    the Phase 3 SymDel index, generate the test sets, and evaluate both
-    methods on both error types.
+    Full accuracy pipeline: load the trained corpus_models artifacts,
+    build the candidates.py SymDel index, generate the test sets, and
+    evaluate both methods on both error types.
 
-    Intended to be run manually by the user — see the commands listed in
-    the Phase 5 write-up.
+    Intended to be run manually by the user; see README.md section 5 for
+    the exact command.
     """
     from candidates import build_symdel_index
     from corpus_models import load_brown_sentences, load_models

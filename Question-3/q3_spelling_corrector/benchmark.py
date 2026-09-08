@@ -1,7 +1,7 @@
 """
-benchmark.py — Q3 Phase 5 (part 2: Speed Demon benchmark)
+Speed Demon benchmark.
 
-Times Method A vs Method B on the EXACT SAME batch of 1,000 misspelled
+Times Method A vs Method B on the exact same batch of 1,000 misspelled
 (non-word) tokens, isolating non-word correction as the assignment
 specifies. Reuses:
     - evaluation.corrupt_word_single_edit for batch generation (not
@@ -9,10 +9,10 @@ specifies. Reuses:
     - corrector.SpellingCorrector.correct_nonword for the timed logic
       itself (not duplicated/reimplemented here)
 
-Model loading and SymDel index construction happen BEFORE timing starts
-(outside the timed block) — see run_speed_demon's docstring.
+Model loading and SymDel index construction happen before timing starts,
+outside the timed block; see run_speed_demon's docstring.
 
-This module does NOT implement accuracy evaluation, a CLI, or Q4
+This module does not implement accuracy evaluation, a CLI, or Q4
 integration.
 """
 
@@ -47,8 +47,8 @@ def generate_benchmark_words(
     ------
     RuntimeError
         If `count` valid words cannot be generated within a generous
-        attempt budget — surfaced rather than silently returning a
-        short/invalid batch, since the assignment requires EXACTLY 1,000.
+        attempt budget. Surfaced rather than silently returning a
+        short/invalid batch, since the assignment requires exactly 1,000.
     """
     vocab_list = sorted(vocab)
     words: List[str] = []
@@ -86,38 +86,39 @@ def run_speed_demon(
 ) -> Dict:
     """
     Time Method A vs Method B on the same 1,000-word batch, running each
-    through the FULL non-word correction pipeline
+    through the full non-word correction pipeline
     (SpellingCorrector.correct_nonword), which internally calls the
-    respective candidate generator and then unigram-ranks the result —
-    this matches the assignment's "non-word error correction logic",
+    respective candidate generator and then unigram-ranks the result.
+    This matches the assignment's "non-word error correction logic",
     not just raw candidate generation.
 
     What is excluded from the timed sections (per the assignment):
         - loading/building vocab, unigram_counts, bigram_counts,
-          vocab_size (Phase 2 — must already be loaded before this
-          function is called)
-        - building symdel_index (Phase 3's build_symdel_index — must
-          already be built and passed in; this function never calls it)
+          vocab_size (corpus_models.py; must already be loaded before
+          this function is called)
+        - building symdel_index (candidates.py's build_symdel_index;
+          must already be built and passed in, this function never calls
+          it)
         - generating the benchmark batch itself (done once, before either
           timed loop, so batch generation cost isn't attributed to either
           method)
 
-    What IS timed: exactly the loop of `count` calls to
+    What is timed: exactly the loop of `count` calls to
     `corrector.correct_nonword(word)`, separately for method="A" and
     method="B", using `time.perf_counter()` (monotonic, sub-microsecond
-    resolution — appropriate for micro-benchmarking).
+    resolution, appropriate for micro-benchmarking).
 
     Fairness
     --------
     - Same batch, same order, for both methods (batch is generated once
       and reused, not regenerated per method).
     - Both correctors share the same underlying vocab/unigram/bigram/
-      symdel_index objects — only `method` differs, so any timing
+      symdel_index objects; only `method` differs, so any timing
       difference is attributable to candidate generation strategy alone,
       not to different models or reference data.
-    - Each corrector is only used for its OWN timed loop, but both are
+    - Each corrector is only used for its own timed loop, but both are
       constructed before either loop starts, so object-construction cost
-      (trivial here — no training happens in __init__) isn't lopsided.
+      (trivial here, no training happens in __init__) isn't lopsided.
 
     Returns
     -------
@@ -186,16 +187,17 @@ def format_speed_demon_report(report: Dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Manual orchestration entry point (NOT executed by Claude — run yourself)
+# Manual orchestration entry point. Not run automatically; run yourself.
 # ---------------------------------------------------------------------------
 
 def run_benchmark_from_scratch(seed: int = 123, batch_size: int = DEFAULT_BATCH_SIZE) -> Dict:
     """
-    Convenience wrapper: load Phase 2 artifacts, build the Phase 3 SymDel
-    index (outside the timed region), then run the Speed Demon benchmark.
+    Convenience wrapper: load the corpus_models artifacts, build the
+    candidates.py SymDel index (outside the timed region), then run the
+    Speed Demon benchmark.
 
-    Intended to be run manually — see the commands listed in the Phase 5
-    write-up.
+    Intended to be run manually; see README.md section 5 for the exact
+    command.
     """
     from candidates import build_symdel_index
     from corpus_models import load_models
@@ -207,7 +209,7 @@ def run_benchmark_from_scratch(seed: int = 123, batch_size: int = DEFAULT_BATCH_
     vocab_size = models["vocab_size"]
     k = models["k"]
 
-    symdel_index = build_symdel_index(vocab)  # built BEFORE timing starts
+    symdel_index = build_symdel_index(vocab)  # built before timing starts
 
     return run_speed_demon(
         vocab, unigram_counts, bigram_counts, vocab_size, symdel_index,

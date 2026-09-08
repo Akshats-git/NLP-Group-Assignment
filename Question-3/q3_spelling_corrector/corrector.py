@@ -1,24 +1,23 @@
 """
-corrector.py — Q3 Phase 4
-
-Correction LOGIC only: given already-trained models (vocab, unigram
+Correction logic only: given already-trained models (vocab, unigram
 counts, bigram counts, a SymDel index) and the candidate-generation
-functions from candidates.py, decide what — if anything — to correct.
+functions from candidates.py, decide what, if anything, to correct.
 
-This module does NOT:
+This module does not:
     - build/train the vocabulary, unigram model, bigram model, or SymDel
-      index (Phase 2 / Phase 3 already did that; everything here is
-      injected via the constructor)
-    - evaluate accuracy or run the Speed Demon benchmark (Phase 5)
-    - provide a CLI (Phase 6)
+      index (corpus_models.py / candidates.py already did that;
+      everything here is injected via the constructor)
+    - evaluate accuracy or run the Speed Demon benchmark (evaluation.py,
+      benchmark.py)
+    - provide a CLI (cli.py)
     - know anything about Q4
 
 Two correction tasks, per the assignment:
 
-    Non-word correction   — the word is NOT in the vocabulary at all.
+    Non-word correction   - the word is not in the vocabulary at all.
                              Rank candidates by raw unigram frequency,
                              take the best one.
-    Real-word correction  — the word IS in the vocabulary, but may be the
+    Real-word correction  - the word is in the vocabulary, but may be the
                              wrong word for this context (e.g. "sea" vs
                              "see"). Rank candidates (including the
                              original) by a bigram-context score and only
@@ -45,7 +44,7 @@ def _split_token(token: str) -> Tuple[str, Optional[str], str]:
 
     If the token has no alphabetic core at all (pure punctuation, numbers,
     empty string), returns (token, None, "") so the caller can pass it
-    through untouched — correction only ever applies to the alphabetic
+    through untouched. Correction only ever applies to the alphabetic
     core of a token.
     """
     match = _TOKEN_RE.match(token)
@@ -75,11 +74,11 @@ class SpellingCorrector:
     """
     Wraps already-trained Q3 models and exposes correction methods.
 
-    Nothing is trained here — `vocab`, `unigram_counts`, `bigram_counts`,
+    Nothing is trained here. `vocab`, `unigram_counts`, `bigram_counts`,
     `vocab_size`, and `symdel_index` are all expected to come from
-    `corpus_models.load_models()` / `candidates.build_symdel_index()`
-    (Phases 2 and 3), so the same instance's artifacts can be reused
-    verbatim by Q4 without retraining.
+    `corpus_models.load_models()` / `candidates.build_symdel_index()`,
+    so the same instance's artifacts can be reused verbatim by Q4
+    without retraining.
     """
 
     def __init__(
@@ -97,42 +96,39 @@ class SpellingCorrector:
         Parameters
         ----------
         vocab, unigram_counts, bigram_counts, vocab_size
-            Trained artifacts from corpus_models (Phase 2).
+            Trained artifacts from corpus_models.
         symdel_index
-            Trained artifact from candidates.build_symdel_index (Phase 3).
+            Trained artifact from candidates.build_symdel_index.
         method
             Which candidate generator(s) to use: "A", "B", or "both".
-            Exposed so Phase 5 can instantiate one corrector per method
-            for the Speed Demon comparison without touching this class.
+            Exposed so evaluation.py and benchmark.py can instantiate one
+            corrector per method for comparison without touching this
+            class.
         real_word_threshold
             Minimum required improvement, in natural-log-probability
             "nats", for a real-word candidate to replace the original
-            word (see explanation below). Not specified by the
-            assignment — an explicit, tunable implementation decision.
-            Chosen empirically by sweeping thresholds against the Phase
-            5 real-word test set: 1.1 nats raises real-word accuracy
-            from 62.31% (at the previous default, 2.0) to 74.75%, while
-            the false-positive rate on already-correct in-vocabulary
-            words (measured on a 2,000-sentence Brown sample) falls
-            slightly, from 1.93% to 4.23%. 1.0 scores marginally higher
-            (76.07%) but was rejected: at that margin the corrector also
-            "corrects" the assignment's own "Please meat me at the
-            station" example to "beat" — a confidently wrong answer,
-            since local bigram context ranks "beat" above the intended
-            "meet" for this phrase regardless of threshold. 1.1 leaves
-            that example unchanged instead, trading 1.3pp of aggregate
-            accuracy to avoid actively introducing a wrong word. See the
-            Q3 report for the full sweep and this trade-off.
+            word. Not specified by the assignment; an explicit, tunable
+            implementation decision. Chosen empirically by sweeping
+            thresholds against the real-word test set: 1.1 nats raises
+            real-word accuracy from 62.31% (at the original default, 2.0)
+            to 74.75%, at the cost of the false-positive rate on
+            already-correct in-vocabulary words rising from 1.93% to
+            4.23%. A lower threshold (1.0) scores marginally higher
+            (76.07%) but was rejected, since at that margin the corrector
+            also "corrects" the assignment's own "Please meat me at the
+            station" example to "beat", a confidently wrong answer. See
+            REPORT_Q3.md section 3.1 for the full sweep and the reasoning
+            behind this trade-off.
         k
             Add-k smoothing constant, passed through to
             corpus_models.bigram_log_prob. Defaults to the same constant
-            used when the bigram model was trained (Phase 2); exposed
-            here only so a corrector could experiment with a different
-            k against the same trained counts, without retraining.
+            used when the bigram model was trained; exposed here only so
+            a corrector could experiment with a different k against the
+            same trained counts, without retraining.
 
-        Note on signature vs. the Phase 1 sketch
-        -----------------------------------------
-        `k` was added (not in the original Phase-1 API sketch) because
+        Note on this signature
+        -----------------------
+        `k` was added to the original API sketch because
         `bigram_log_prob` requires it and the assignment explicitly says
         "reuse bigram_log_prob / smoothing logic" rather than re-deriving
         smoothing here. Everything else matches the requested signature.
@@ -150,7 +146,7 @@ class SpellingCorrector:
         self.k = k
 
     # ------------------------------------------------------------------
-    # Candidate generation (delegates to Phase 3, does not duplicate it)
+    # Candidate generation (delegates to candidates.py, does not duplicate it)
     # ------------------------------------------------------------------
 
     def _generate_candidates(self, word: str) -> set:
@@ -174,8 +170,8 @@ class SpellingCorrector:
         """
         Correct `word` assuming it is a non-word error (not in vocab).
 
-        Returns a metadata dict (not just a bare string) so callers —
-        including correct_sentence and later Phase 5/6 code — can inspect
+        Returns a metadata dict (not just a bare string) so callers,
+        including correct_sentence and evaluation.py/cli.py, can inspect
         what happened without recomputing candidates:
 
             {
@@ -191,7 +187,7 @@ class SpellingCorrector:
         output, which matters for evaluation/debugging).
 
         If `word` is empty or already in the vocabulary, this is a no-op
-        (returns it unchanged) — callers are expected to route only true
+        (returns it unchanged). Callers are expected to route only true
         non-word tokens here, but this guard keeps the method safe to
         call standalone too.
         """
@@ -277,7 +273,7 @@ class SpellingCorrector:
         ----------
         sentence_words : list[str]
             Normalized (lowercased) word tokens for the whole sentence.
-            Read-only — this method does not mutate the list.
+            Read-only; this method does not mutate the list.
         index : int
             Position of the word to check within sentence_words.
 
@@ -417,7 +413,7 @@ class SpellingCorrector:
         metadata: List[Optional[Dict]] = [None] * n
         working: List[Optional[str]] = list(cores)  # updated as corrections apply
 
-        # Pass 1 — non-word correction.
+        # Pass 1 - non-word correction.
         for i in range(n):
             word_norm = cores[i]
             if word_norm is None:
@@ -439,7 +435,7 @@ class SpellingCorrector:
                 # `working` as-is; it still participates as (weak,
                 # smoothed) bigram context for its neighbors.
 
-        # Pass 2 — real-word correction, using the (possibly non-word-
+        # Pass 2 - real-word correction, using the (possibly non-word-
         # corrected) `working` sequence as context.
         for i in range(n):
             if metadata[i] is not None:

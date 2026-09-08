@@ -1,4 +1,4 @@
-# Q3 — Spelling Corrector (Grading README)
+# Q3: Spelling Corrector (Grading README)
 
 ## 1. Overview
 
@@ -7,24 +7,24 @@ unigram + bigram language models, two candidate-generation methods
 (brute-force edit distance and Symmetric Delete), non-word and
 real-word/context correction, reproducible accuracy evaluation, a
 1,000-word Speed Demon timing benchmark, and an interactive terminal
-CLI. This README is written for grading — for full technical detail and
+CLI. This README is written for grading; for full technical detail and
 evidence, see the accompanying report ([REPORT_Q3.md](REPORT_Q3.md)).
 
 ## 2. Project Structure
 
 ```
 Q3/
-├── nltk_data/                          # local Brown Corpus data (~13 MB) — see Setup
+├── nltk_data/                          # local Brown Corpus data (~13 MB), see Setup
 ├── requirements.txt                     # Python dependencies (submitted)
 ├── README.md                            # this file
 ├── REPORT_Q3.md                         # full technical report (design choices, error analysis, sample runs)
 └── q3_spelling_corrector/
-    ├── corpus_models.py                 # Part 1 — vocab, unigram, bigram models
-    ├── candidates.py                     # Part 2 — Method A + Method B
-    ├── corrector.py                      # Part 3 — non-word + real-word correction
-    ├── evaluation.py                      # Part 4 — accuracy evaluation
-    ├── benchmark.py                       # Part 4 — Speed Demon benchmark
-    ├── cli.py                             # Part 5 — interactive terminal CLI
+    ├── corpus_models.py                 # Part 1: vocab, unigram, bigram models
+    ├── candidates.py                     # Part 2: Method A + Method B
+    ├── corrector.py                      # Part 3: non-word + real-word correction
+    ├── evaluation.py                      # Part 4: accuracy evaluation
+    ├── benchmark.py                       # Part 4: Speed Demon benchmark
+    ├── cli.py                             # Part 5: interactive terminal CLI
     ├── utils.py                           # shared preprocessing
     └── models/
         └── q3_language_models.pkl        # persisted vocab/unigram/bigram artifact
@@ -35,7 +35,7 @@ Q3/
 - Python 3
 - Dependencies listed in `requirements.txt` (includes `nltk`)
 - The Brown Corpus, provided locally under `Q3/nltk_data/corpora/brown/`
-  (no download should be necessary — see Setup)
+  (no download should be necessary, see Setup)
 
 ## 4. Setup
 
@@ -49,8 +49,8 @@ pip install -r requirements.txt
 export NLTK_DATA="$PWD/nltk_data"
 ```
 
-- `.venv` is a local virtual environment created by the command above —
-  it is **not** part of the submission.
+- `.venv` is a local virtual environment created by the command above.
+  It is **not** part of the submission.
 - `requirements.txt` **is** part of the submission and is what
   recreates the environment via `pip install -r requirements.txt`.
 - `NLTK_DATA` points NLTK at the **submitted, local** copy of the Brown
@@ -69,7 +69,7 @@ python3 -c "from nltk.corpus import brown; print(len(brown.sents()))"
 
 Expected output: `57340`
 
-**Optional fallback** — only needed if the above fails because the
+**Optional fallback**, only needed if the above fails because the
 local corpus is missing for some reason (this is not a required step
 for grading this submission):
 
@@ -94,7 +94,7 @@ All commands below assume you are in `Q3/q3_spelling_corrector/` with
 
 | # | Command | What it does |
 |---|---|---|
-| 1 | `python3 corpus_models.py` | Builds vocabulary, unigram counts, and bigram counts from Brown, and saves them to `models/q3_language_models.pkl`. **Optional** — the artifact is already included in this submission; every other command loads it rather than retraining. Only run this to rebuild it from scratch. |
+| 1 | `python3 corpus_models.py` | Builds vocabulary, unigram counts, and bigram counts from Brown, and saves them to `models/q3_language_models.pkl`. **Optional**: the artifact is already included in this submission; every other command loads it rather than retraining. Only run this to rebuild it from scratch. |
 | 2 | `python3 evaluation.py` | Generates the reproducible test set and reports non-word/real-word accuracy for Method A and Method B. |
 | 3 | `python3 benchmark.py` | Runs the 1,000-word Speed Demon benchmark, timing Method A vs Method B. |
 | 4 | `python3 cli.py` | Starts the interactive terminal corrector. Type a sentence, see it corrected, type `exit` to quit. |
@@ -103,11 +103,11 @@ All commands below assume you are in `Q3/q3_spelling_corrector/` with
 
 | Part | Marks | Command(s) / Source | What the grader should look for |
 |---|---:|---|---|
-| Part 1 — Corpus & Model Prep | 6 | `python3 corpus_models.py`; source: `corpus_models.py` | Vocabulary (`set`), unigram `Counter`, sentence-bounded bigram counts, add-k smoothed `bigram_log_prob`, saved to `models/q3_language_models.pkl` |
-| Part 2 — Candidate Generation (Method A: 5, Method B: 5) | 10 | Source inspection: `candidates.py`; exercised indirectly via `evaluation.py`'s per-method results | `edit_distance_1_candidates` (Method A: deletion/insertion/replacement/transposition, filtered against vocab); `build_symdel_index` + `symdel_candidates` (Method B: one-character-deletion index, query-time deletion lookup, edit-distance verification). No standalone script exists for Part 2 in isolation — it is exercised through Parts 3–4. |
-| Part 3 — Correction Logic (non-word: 4, real-word: 4) | 8 | Source inspection: `corrector.py`; exercised live via `python3 cli.py` and via `evaluation.py` | `SpellingCorrector.correct_nonword` (unigram-frequency ranking) and `correct_realword` (bigram-context scoring against a threshold). No standalone script exists for Part 3 in isolation. |
-| Part 4 — Evaluation & Speed Demon (4 + 4) | 8 | `python3 evaluation.py`; `python3 benchmark.py` | Reproducible test set (5,734 cases in the verified environment, where Brown reported 57,340 sentences — see Section 7), separate non-word/real-word accuracy for A and B on identical cases; 1,000-word timed comparison with model/index construction excluded from timing |
-| Part 5 — Live Interactive CLI | 8 | `python3 cli.py` | Continuous loop, corrected sentence output, changed-word highlighting, per-sentence latency, clean exit on `exit` |
+| Part 1: Corpus & Model Prep | 6 | `python3 corpus_models.py`; source: `corpus_models.py` | Vocabulary (`set`), unigram `Counter`, sentence-bounded bigram counts, add-k smoothed `bigram_log_prob`, saved to `models/q3_language_models.pkl` |
+| Part 2: Candidate Generation (Method A: 5, Method B: 5) | 10 | Source inspection: `candidates.py`; exercised indirectly via `evaluation.py`'s per-method results | `edit_distance_1_candidates` (Method A: deletion/insertion/replacement/transposition, filtered against vocab); `build_symdel_index` + `symdel_candidates` (Method B: one-character-deletion index, query-time deletion lookup, edit-distance verification). No standalone script exists for Part 2 in isolation; it is exercised through Parts 3-4. |
+| Part 3: Correction Logic (non-word: 4, real-word: 4) | 8 | Source inspection: `corrector.py`; exercised live via `python3 cli.py` and via `evaluation.py` | `SpellingCorrector.correct_nonword` (unigram-frequency ranking) and `correct_realword` (bigram-context scoring against a threshold). No standalone script exists for Part 3 in isolation. |
+| Part 4: Evaluation & Speed Demon (4 + 4) | 8 | `python3 evaluation.py`; `python3 benchmark.py` | Reproducible test set (5,734 cases in the verified environment, where Brown reported 57,340 sentences, see Section 7), separate non-word/real-word accuracy for A and B on identical cases; 1,000-word timed comparison with model/index construction excluded from timing |
+| Part 5: Live Interactive CLI | 8 | `python3 cli.py` | Continuous loop, corrected sentence output, changed-word highlighting, per-sentence latency, clean exit on `exit` |
 | **Total** | **40** | | |
 
 ## 7. Expected / Verified Results
@@ -125,7 +125,7 @@ not guaranteed to be exactly 5,734 in every environment:
 
 Method A and Method B report identical accuracy because both ultimately
 identify the same edit-distance-1 candidate universe from the
-vocabulary — they differ in how candidates are generated/retrieved, not
+vocabulary; they differ in how candidates are generated/retrieved, not
 in which candidates exist. Real-word accuracy reflects `real_word_threshold
 = 1.1` (see §9 and [REPORT_Q3.md](REPORT_Q3.md) for how this value was
 chosen empirically, including a false-positive-rate check on already-correct
@@ -144,7 +144,7 @@ deletion/insertion/replacement/transposition strings for each query
 word. Method B does generate one-character deletions of the input word
 at query time, but uses the precomputed Symmetric Delete index to look
 them up instead of generating all insertion/replacement/transposition
-candidates the way Method A does — it does not skip query-time
+candidates the way Method A does. It does not skip query-time
 generation entirely, only the much larger enumeration Method A
 performs.
 
@@ -182,12 +182,12 @@ Latency: 0.348 ms
 ```
 
 Each turn also prints which words changed (`Changes:` line) and the
-correction latency. The "meat" example is intentionally left unchanged —
+correction latency. The "meat" example is intentionally left unchanged;
 see [REPORT_Q3.md](REPORT_Q3.md) for why: the local bigram context ranks
 "beat" above the intended "meet" for this exact phrase regardless of
 threshold, so firing here would swap in a different wrong word rather
 than the right one; leaving it unchanged was the deliberate choice. These
-examples illustrate behavior — they do not represent every possible
+examples illustrate behavior. They do not represent every possible
 spelling error the corrector can or cannot handle.
 
 ## 9. Implementation Summary
@@ -209,7 +209,7 @@ spelling error the corrector can or cannot handle.
   more than 1.1 nats higher. The assignment does not specify an exact
   threshold; 1.1 was chosen empirically by sweeping thresholds against
   the Part 4 real-word test set and a false-positive check on
-  already-correct text — see [REPORT_Q3.md](REPORT_Q3.md) for the full
+  already-correct text; see [REPORT_Q3.md](REPORT_Q3.md) for the full
   sweep and why a slightly higher-scoring value (1.0) was rejected.
 - **Sentence correction**: non-word correction runs first, then
   real-word correction, using the updated word sequence as context.
@@ -219,8 +219,8 @@ Full technical detail is in [REPORT_Q3.md](REPORT_Q3.md).
 ## 10. Q4 Reuse
 
 Q4 reuses the Q3 vocabulary, unigram model, bigram model, Method A,
-Method B/Symmetric Delete, and `SpellingCorrector` without retraining —
-see `Question-4/q4/spelling.py` and `Question-4/q4/model_loader.py`.
+Method B/Symmetric Delete, and `SpellingCorrector` without retraining.
+See `Question-4/q4/spelling.py` and `Question-4/q4/model_loader.py`.
 
 ## 11. Limitations
 

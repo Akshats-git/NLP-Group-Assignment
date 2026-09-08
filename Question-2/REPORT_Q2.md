@@ -6,10 +6,7 @@ The goal of this project is to build a simple, data-driven dependency parser fro
 
 ## 2. Dataset
 
-The **Universal Dependencies English-EWT** (English Web Treebank) corpus is used:
-
-- **Training**: `en_ewt-ud-train.conllu` — 12,544 sentences
-- **Evaluation**: `en_ewt-ud-dev.conllu` — 2,001 sentences
+The **Universal Dependencies English-EWT** (English Web Treebank) corpus is used: `en_ewt-ud-train.conllu` for training (12,544 sentences) and `en_ewt-ud-dev.conllu` for evaluation (2,001 sentences).
 
 The dataset was obtained by cloning the official repository:
 `https://github.com/UniversalDependencies/UD_English-EWT.git`
@@ -52,7 +49,7 @@ The oracle simulates the parsing process on gold-standard trees to generate trai
 
 3. **SHIFT**: Applied as the default when neither arc condition is met.
 
-The dependent-completeness check is critical — a word can only be removed from the stack after all of its children in the gold tree have been attached to it. This ensures the oracle produces transitions that reconstruct the exact gold dependency tree.
+The dependent-completeness check is what makes this work: a word can only be removed from the stack after all of its children in the gold tree have been attached to it. That's what guarantees the oracle produces transitions that reconstruct the exact gold dependency tree.
 
 The oracle generated **409,156 training instances** across **88 unique transition labels** from the 12,544 training sentences.
 
@@ -73,18 +70,9 @@ When a position is unavailable (e.g., stack has fewer than 2 elements), the spec
 
 **Model**: Logistic Regression (scikit-learn `LogisticRegression`)
 
-**Configuration**:
-- `max_iter=1000` — sufficient iterations for convergence
-- `solver='lbfgs'` — efficient for multinomial classification
-- `C=1.0` — default regularization strength
-- `n_jobs=-1` — parallel training using all CPU cores
+**Configuration**: `max_iter=1000` (enough iterations to reach convergence), `solver='lbfgs'` (works well for multinomial classification), `C=1.0` (the default regularization strength, left untouched), and `n_jobs=-1` so training uses all available CPU cores.
 
-**Why Logistic Regression was chosen**:
-- **Speed**: Fast training on large datasets (409K instances), trained in ~80 seconds
-- **Multi-class**: Naturally handles 88 different transition labels via multinomial softmax
-- **Sparse features**: Works efficiently with one-hot encoded categorical features
-- **Interpretable**: Suitable for an academic assignment where understanding the model is important
-- **Probability outputs**: Provides class probabilities, enabling the parser to try alternative transitions when the top prediction is invalid
+**Why Logistic Regression**: it trains fast even on a large dataset like this one (409K instances, done in about 80 seconds), and it handles the 88 transition labels naturally through multinomial softmax rather than needing a one-vs-rest wrapper. The one-hot encoded POS features are sparse, which logistic regression is efficient with, and the model stays interpretable, which matters for an assignment where the point is understanding the parser rather than squeezing out accuracy. It also outputs class probabilities instead of just a single label, which the parser leans on to fall back to the next most likely transition when the top prediction turns out to be invalid.
 
 **Training accuracy**: 80.33%
 
@@ -100,10 +88,7 @@ The parser takes a sentence (words + POS tags) as input and produces dependency 
    - Apply the transition to update the configuration
 3. Continue until the buffer is empty and the stack has at most 1 element
 
-**Validity checking** ensures the parser never crashes:
-- **SHIFT**: only valid if buffer is non-empty
-- **LEFT-ARC**: only valid if stack has ≥ 2 elements AND second element is not ROOT
-- **RIGHT-ARC**: only valid if stack has ≥ 2 elements
+Validity checking is what keeps the parser from crashing: SHIFT is only valid if the buffer is non-empty, LEFT-ARC needs the stack to have at least 2 elements with the second one not being ROOT, and RIGHT-ARC just needs the stack to have at least 2 elements.
 
 If no predicted transition is valid, a fallback mechanism applies:
 1. SHIFT if the buffer has elements
@@ -174,28 +159,12 @@ This LAS of **56.68%** is consistent with expectations for a simple transition-b
 
 ## 12. Design Choices
 
-1. **Logistic Regression over SVM or Random Forest**: Chosen for its speed with many classes, natural probability outputs, and compatibility with sparse one-hot features.
-
-2. **DictVectorizer for feature encoding**: Provides clean one-hot encoding of categorical POS features without manual label encoding.
-
-3. **Probability-ranked transition selection**: Rather than just taking the top prediction, the parser tries all transitions in order of decreasing probability, selecting the first valid one. This significantly reduces parse failures.
-
-4. **Dependent-completeness check in oracle**: Ensures training data is correct by only allowing reduction when all of a word's children have been attached.
-
-5. **Virtual ROOT token**: Simplifies the transition system by always having a root anchor on the stack.
+Logistic Regression was picked over SVM or Random Forest mainly for speed with this many classes, plus it gives natural probability outputs and plays well with sparse one-hot features. Feature encoding uses `DictVectorizer`, which gives clean one-hot encoding of the categorical POS features without having to hand-roll label encoding. For transition selection, the parser doesn't just take the top prediction; it walks down the ranked list of transitions by probability and applies the first one that's actually valid, which cuts down parse failures a lot compared to always trusting the top-1 prediction. The oracle's dependent-completeness check is there to keep the training data correct, since a word can only be reduced once all of its children have been attached. And the virtual ROOT token exists just to simplify the transition system, so there's always a root anchor sitting on the stack instead of having to special-case an empty stack.
 
 ## 13. Limitations
 
-1. **Limited features**: Only 4 POS-tag features are used, which limits the parser's ability to make context-sensitive decisions. Adding word form features, dependency relation features of already-attached children, or buffer lookahead would improve accuracy.
-
-2. **No lexical features**: The parser has no knowledge of individual words, only their POS tags. This means it cannot learn word-specific patterns.
-
-3. **Greedy parsing**: The parser makes locally optimal decisions without any search. Beam search or global optimization would improve accuracy.
-
-4. **No dynamic oracle**: The oracle is static — errors during prediction cannot be recovered from using oracle-guided training techniques like dynamic oracles.
-
-5. **No handling of non-projective trees**: The Arc-Standard system can only produce projective trees. Non-projective dependencies in the gold data are handled via fallback but may not be correctly parsed.
+The parser only uses 4 POS-tag features, which caps how context-sensitive its decisions can be; adding word form features, dependency relation features from children already attached, or a bit more buffer lookahead would likely help. Related to that, it has no lexical knowledge at all, it only sees POS tags, so it can't pick up on word-specific patterns. Parsing is also greedy: the model commits to a transition at each step with no search, so beam search or some form of global optimization would probably raise accuracy further. The oracle itself is static rather than dynamic, meaning the model has no way to recover from its own prediction errors during training the way dynamic-oracle techniques allow. Finally, Arc-Standard can only produce projective trees, so non-projective dependencies in the gold data fall back to the generic fallback mechanism and aren't always parsed correctly.
 
 ## 14. Conclusion
 
-This project successfully implements a complete transition-based dependency parser using the Arc-Standard transition system. The parser was trained on the Universal Dependencies English-EWT treebank and evaluated on the dev set, achieving a Labeled Attachment Score of **56.68%**. While this score is modest compared to state-of-the-art parsers, it demonstrates the core principles of data-driven dependency parsing: oracle-guided training data generation, feature extraction from parser configurations, classifier-based transition prediction, and systematic evaluation using standard metrics. The implementation is modular, well-documented, and handles edge cases safely.
+This project builds a working transition-based dependency parser on the Arc-Standard system, trained on the Universal Dependencies English-EWT treebank and evaluated on the dev set, where it reaches a Labeled Attachment Score of **56.68%**. That's a modest number next to state-of-the-art parsers, but it still covers the core ideas of data-driven dependency parsing: generating training data through an oracle, extracting features from parser configurations, predicting transitions with a classifier, and evaluating the result with a standard metric. The code is split into clear modules and handles its edge cases without crashing.

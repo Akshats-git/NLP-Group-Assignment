@@ -6,6 +6,8 @@ Question 3, and the PCFG parser and n-gram grammar models added here. This repor
 the shared language models, the end-of-passage analysis, the deployment and the
 benchmark, and it answers the comparison questions in the brief.
 
+**Live deployment:** [nlp-live-editor.streamlit.app](https://nlp-live-editor.streamlit.app/)
+
 Every number below comes from a script in `scripts/`, and the raw output is kept in
 `reports/`. Nothing here was typed in by hand.
 
@@ -381,17 +383,25 @@ alerts in the browser are produced by the same code as the transcripts above.
 
 ![Live alerts in the editor](reports/live_app.png)
 
-The first screenshot is the manual typing mode part way through a passage. All three
-alert types are visible with their latencies, and the sidebar reports the running
-averages.
+The first screenshot is Simulated Live Typing mode on a Brown passage about Sam Rayburn,
+after the stream finished and Analyse Passage ran. The Final Passage Analysis table shows
+all four sentences: the PCFG fails to parse any of them under the pruned grammar, so the
+method-selection rule (§3) falls back to the trigram for every row, which has full
+vocabulary coverage on this passage. Three sentences come back grammatical and the
+one-word sentence 4 ("he") is borderline. No merges or spelling fixes landed in this run.
 
 ![End of passage analysis](reports/live_app_analysis.png)
 
-The second screenshot is the same session after the analysis. Sentence 2 is the fox
-sentence, which parses at -4.72 per word and is the one row where the parser is chosen.
-The merges resolved and spelling fixes columns show two merges in sentence 1, one in
-sentence 2 and one spelling fix in sentence 3. The whole session cost 6 ms of pipeline
-time across 32 tokens, 3 grammar triggers and a 3.2 ms final analysis.
+The second screenshot is the same session scrolled further down. "Live alerts against the
+final verdict" (§5.1's live metric) shows 3 of the 4 sentences clean under both the live
+per-token checks and the final verdict, with 1 sentence flagged by the final verdict only
+— a 75% agreement rate. Timing shows 54 tokens streamed, 5 grammar triggers fired, a
+134.2 ms end-of-passage analysis, and 13 ms of total live pipeline time. The sidebar's
+latency metrics (0.13 ms average segmentation+spelling check, 1.22 ms average grammar
+check) match the numbers in §4. Below that, the PCFG Constituency Parse Trees panel shows
+why the parser lost every sentence in this run: sentence 1 ("of this i am proud") is
+tagged IN DT PRP VBD JJ . and comes back unparseable under the pruned grammar, and
+sentence 2 is unparseable for the same reason.
 
 ## 8. Limitations
 

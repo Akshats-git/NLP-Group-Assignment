@@ -1,6 +1,4 @@
 """
-corpus_models.py — Q3 Phase 2
-
 Builds and persists the language resources shared by the rest of Q3
 (candidate generation, correction logic, evaluation) and reused as-is by Q4:
 
@@ -8,8 +6,8 @@ Builds and persists the language resources shared by the rest of Q3
     - unigram frequency     : Counter[str, int]
     - bigram counts + a smoothed bigram probability function (add-k smoothing)
 
-Nothing here performs correction, candidate generation, or evaluation —
-those are later phases. This module only trains and saves/loads models.
+Nothing here performs correction, candidate generation, or evaluation.
+This module only trains and saves/loads models.
 """
 
 import pickle
@@ -26,11 +24,11 @@ from utils import clean_sentence
 # Assumptions (stated explicitly)
 # ---------------------------------------------------------------------------
 # 1. NLTK's 'brown' corpus resource is assumed to already be downloaded
-#    (nltk.download('brown')). We do NOT call nltk.download() here, since
-#    Phase 2 must not perform network/download actions itself; that is a
-#    one-time environment setup step for whoever runs this.
+#    (nltk.download('brown')). We do not call nltk.download() here, since
+#    this module shouldn't perform network/download actions itself; that
+#    is a one-time environment setup step for whoever runs this.
 # 2. Sentence boundaries come from brown.sents() (untagged, using Brown's
-#    own sentence segmentation) — no custom sentence splitting is done.
+#    own sentence segmentation). No custom sentence splitting is done.
 # 3. Add-k (Laplace-style) smoothing is used for the bigram model, with a
 #    default k = 1.0. This is an implementation decision (the assignment
 #    doesn't fix k) and is exposed as a parameter so it can be tuned later
@@ -63,7 +61,7 @@ def build_vocab_and_unigram(sentences: List[List[str]]) -> Tuple[set, Counter]:
     vocab : set[str]
         The set of unique words seen in the corpus.
     unigram_counts : Counter[str, int]
-        Raw frequency count of each word — used later for non-word
+        Raw frequency count of each word, used later for non-word
         correction ranking (highest-frequency candidate wins).
     """
     unigram_counts: Counter = Counter()
@@ -121,7 +119,7 @@ def bigram_log_prob(
 
 
 # ---------------------------------------------------------------------------
-# Persistence — so Q4 (and later Q3 phases) can load trained artifacts
+# Persistence, so Q4 and the rest of Q3 can load trained artifacts
 # without retraining.
 # ---------------------------------------------------------------------------
 
@@ -156,7 +154,7 @@ def load_models(model_dir: Path = DEFAULT_MODEL_DIR) -> Dict:
     Load the pickled artifact dict. Returns a dict with keys:
         'vocab', 'unigram_counts', 'bigram_counts', 'vocab_size', 'k'
 
-    This is the function Q4 (and Q3 Phases 3-6) should call at startup to
+    This is the function Q4 (and the rest of Q3) should call at startup to
     reuse the trained models without retraining:
 
         models = load_models()
@@ -173,14 +171,14 @@ def load_models(model_dir: Path = DEFAULT_MODEL_DIR) -> Dict:
 
 
 # ---------------------------------------------------------------------------
-# Orchestration entry point for this phase (build + save everything).
-# Not executed by Claude — provided for the user to run themselves.
+# Orchestration entry point: build and save everything.
+# Not run automatically; the user runs this file themselves.
 # ---------------------------------------------------------------------------
 
 def build_and_save_all(model_dir: Path = DEFAULT_MODEL_DIR, k: float = DEFAULT_K) -> None:
     """
-    Full Phase 2 pipeline: load corpus -> build vocab/unigram/bigram ->
-    save artifacts. Intended to be run once, manually, by the user
+    Full pipeline: load corpus, build vocab/unigram/bigram, save artifacts.
+    Intended to be run once, manually, by the user
     (e.g., `python -c "from corpus_models import build_and_save_all; build_and_save_all()"`).
     """
     sentences = load_brown_sentences()
@@ -190,5 +188,5 @@ def build_and_save_all(model_dir: Path = DEFAULT_MODEL_DIR, k: float = DEFAULT_K
 
 
 if __name__ == "__main__":
-    # Left as a manual entry point — the user runs this file themselves.
+    # Manual entry point; the user runs this file themselves.
     build_and_save_all()

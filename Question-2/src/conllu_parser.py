@@ -8,12 +8,9 @@ Parses each sentence into a list of Token objects containing:
   - gold-standard head
   - dependency relation/label
 
-Handles:
-  - Comment lines (starting with #)
-  - Multi-word tokens (range IDs like 1-2) — skipped
-  - Empty nodes (IDs with '.') — skipped
-  - Blank lines as sentence boundaries
-  - Virtual ROOT token at index 0
+Handles comment lines (starting with #), multi-word tokens (range IDs like
+1-2, which get skipped), empty nodes (IDs with '.', also skipped), blank
+lines as sentence boundaries, and adds a virtual ROOT token at index 0.
 """
 
 from dataclasses import dataclass

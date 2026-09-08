@@ -25,7 +25,7 @@ from q4.grammar import TRIGGER_N
 from q4.model_loader import load_all_models
 from q4.passage import MERGE_PROB, passage_token_stream, sample_passage
 from q4.pcfg import train_pcfg
-from q4.pipeline import LiveDocument, check_token, check_window
+from q4.runner import run_passage
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,7 +52,10 @@ def main() -> None:
     print("Q4 live editor run")
     print(f"corpus {corpus_name}, {len(passage)} sentences, {len(tokens)} tokens typed")
     print(f"merge probability p = {args.merge_prob}, grammar trigger N = {args.trigger_n}")
-    print(f"perplexity threshold = {floors['window_ppl_p95']:.0f} (95th percentile of clean Brown windows)")
+    print(
+        f"perplexity threshold = {floors['window_ppl_p95']:.0f} "
+        "(95th percentile of clean Brown windows)"
+    )
     print("=" * 78)
     print()
     print("Typed text as it arrives")
@@ -60,60 +63,22 @@ def main() -> None:
     print()
     print("Live alerts")
 
-    document = LiveDocument()
-    token_latencies: list[float] = []
-    trigger_latencies: list[float] = []
-    live_flagged: list[bool] = []
-    alert_count = {"SEGMENT": 0, "SPELL": 0, "GRAMMAR": 0}
-    words_seen = 0
-    next_trigger = args.trigger_n
-    run_started = time.perf_counter()
+    def show(kind: str, detail: str, latency_ms: float) -> None:
+        print(f"  [{kind}-ALERT] {detail}  ({latency_ms:.2f} ms)")
 
-    def flag_current_sentence() -> None:
-        index = len(document.sentences)
-        while len(live_flagged) <= index:
-            live_flagged.append(False)
-        live_flagged[index] = True
+    run = run_passage(
+        tokens,
+        models,
+        trigger_n=args.trigger_n,
+        delay=args.delay,
+        on_alert=show,
+    )
 
-    for token, sentence_end in tokens:
-        outcome = check_token(token, models)
-        token_latencies.append(outcome.latency_ms)
+    started = time.perf_counter()
+    analyses = analyse_document(run.document.sentences, grammar, models, floors)
+    analysis_ms = (time.perf_counter() - started) * 1000
 
-        for alert in outcome.alerts:
-            alert_count[alert.kind] += 1
-            flag_current_sentence()
-            print(f"  [{alert.kind}-ALERT] {alert.detail}  ({alert.latency_ms:.2f} ms)")
-
-        words_seen += len(outcome.words)
-        document.add(outcome, force_sentence_end=sentence_end)
-
-        if words_seen >= next_trigger:
-            next_trigger += args.trigger_n
-            window = document.words()[-args.trigger_n :]
-            if len(window) >= 2:
-                result = check_window(window, models)
-                trigger_latencies.append(result.latency_ms)
-                if result.fired:
-                    alert_count["GRAMMAR"] += 1
-                    flag_current_sentence()
-                    fixes = ", ".join(
-                        f"{fix.original} -> {fix.suggestion}" for fix in result.real_word_fixes
-                    )
-                    detail = f"window perplexity {result.ppl:.0f}"
-                    if fixes:
-                        detail += f", real-word suggestion {fixes}"
-                    print(f"  [GRAMMAR-ALERT] {detail}  ({result.latency_ms:.2f} ms)")
-
-        if args.delay:
-            time.sleep(args.delay)
-
-    document.close()
-
-    analysis_started = time.perf_counter()
-    analyses = analyse_document(document.sentences, grammar, models, floors)
-    analysis_ms = (time.perf_counter() - analysis_started) * 1000
-    total_ms = (time.perf_counter() - run_started) * 1000
-
+    live_flagged = list(run.live_flagged)
     while len(live_flagged) < len(analyses):
         live_flagged.append(False)
 
@@ -136,18 +101,19 @@ def main() -> None:
     print(f"  clean for both          : {agreement['neither']}")
     print(f"  agreement               : {agreement['agreement']:.0%}")
 
-    average_token = sum(token_latencies) / len(token_latencies) if token_latencies else 0.0
-    average_trigger = (
-        sum(trigger_latencies) / len(trigger_latencies) if trigger_latencies else 0.0
-    )
-
     print()
     print("Latency")
-    print(f"  alerts fired            : {alert_count}")
-    print(f"  per-token check         : {average_token:.2f} ms average over {len(token_latencies)} tokens")
-    print(f"  per-trigger check       : {average_trigger:.2f} ms average over {len(trigger_latencies)} triggers")
+    print(f"  alerts fired            : {run.counts}")
+    print(
+        f"  per-token check         : {run.average_token_ms:.2f} ms average "
+        f"over {len(run.token_latencies)} tokens"
+    )
+    print(
+        f"  per-trigger check       : {run.average_trigger_ms:.2f} ms average "
+        f"over {len(run.trigger_latencies)} triggers"
+    )
     print(f"  end-of-passage analysis : {analysis_ms:.1f} ms for {len(analyses)} sentences")
-    print(f"  total                   : {total_ms:.1f} ms")
+    print(f"  total                   : {run.wall_ms + analysis_ms:.1f} ms")
 
 
 if __name__ == "__main__":

@@ -186,13 +186,12 @@ Verify the data layer and print the corpus statistics used in the report:
 .venv/bin/python scripts/run_q1.py --languages German   # needs data/UD_German-GSD
 ```
 
-Results land in [models/q1_results.json](models/q1_results.json). The
-comparative report is [REPORT_Q1.md](REPORT_Q1.md); it was written against the
-full Q1 pipeline. Its segmentation, tagging and error-attribution numbers
-reproduce here to within ~0.2 pp. Its agreement section is measured on the
-*pipeline* and on gender alone (88.37% over 1,479 pairs); scored the same way,
-this tree gives 88.22% over 1,511 pairs. Scored on gold words and on both
-features - the run's headline - it is 96.46%, because segmentation errors, not
-tagging errors, account for most of the difference. The run prints both modes so
-the two are never confused. Its sections on the joint segment-and-tag decoder
-describe work not yet re-added to this tree.
+Results land in [models/q1_results.json](models/q1_results.json), and the full
+transcript in [models/q1_run_full.log](models/q1_run_full.log) — both are
+committed so the numbers in the report are checkable without re-running the
+pipeline. The comparative report is [REPORT_Q1.md](REPORT_Q1.md); its headline
+agreement number (96.46% over 2,625 gold-word pairs, both gender and number) is
+scored on gold words, since segmentation errors — not tagging errors — account
+for most of the drop when the same pairs are scored on the pipeline's own
+segmentation output instead (86.06%). The run prints both modes so the two are
+never confused.

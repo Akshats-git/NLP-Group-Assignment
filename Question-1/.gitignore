@@ -1,6 +1,9 @@
 .venv/
 data/
-models/
+models/*
+!models/q1_results.json
+!models/q1_run_full.log
+!models/q1_english.pkl
 nltk_data/
 __pycache__/
 *.pyc

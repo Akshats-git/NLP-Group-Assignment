@@ -115,6 +115,7 @@ def tune_segmentation(runner: Runner, sentences, base: DecoderConfig) -> Decoder
         if f1 > best_f1:
             best, best_f1 = config, f1
 
+    best_width, best_width_f1 = best.beam_width, -1.0
     for width in (4, 8, 16):
         config = best.replace(beam_width=width)
         start = time.perf_counter()
@@ -122,7 +123,9 @@ def tune_segmentation(runner: Runner, sentences, base: DecoderConfig) -> Decoder
         elapsed = (time.perf_counter() - start) / max(1, len(sentences)) * 1000
         f1 = score_segmentation(sentences, predictions).token_f1
         print(f"    beam={width:>5}  token F1={f1:.4f}  {elapsed:.0f} ms/sentence")
-    return best
+        if f1 > best_width_f1:
+            best_width, best_width_f1 = width, f1
+    return best.replace(beam_width=best_width)
 
 
 def tune_tagger(sentences, train_pairs) -> tuple[HMMTagger, dict[int, float]]:

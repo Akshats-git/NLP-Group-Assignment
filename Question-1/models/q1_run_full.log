@@ -1,0 +1,374 @@
+
+loading English (Brown, universal tagset) ...
+
+==============================================================================
+English  --  Brown
+==============================================================================
+  train=45,459 sentences   dev sample=200   test sample=400
+  trained in 2.4s   LM vocab=23,780   word types=41,974
+  dev perplexity (trigram word LM): 1088.6
+
+  tuning segmentation on dev ...
+    unk_penalty=  0.0  token F1=0.9547
+    unk_penalty= -2.0  token F1=0.9536
+    unk_penalty= -4.0  token F1=0.9519
+    unk_penalty= -6.0  token F1=0.9498
+    unk_penalty= -8.0  token F1=0.9469
+    beam=    4  token F1=0.9547  7 ms/sentence
+    beam=    8  token F1=0.9547  13 ms/sentence
+    beam=   16  token F1=0.9547  23 ms/sentence
+
+  selected config: DecoderConfig(max_word_len=19, beam_width=4, unk_penalty=0.0, alpha=1.0, beta=1.0, restrict_to_vocab=False)
+
+  PART 1 -- Segmentation (test sample)
+    model                        token F1  boundary F1  exact sent  ms/sent  
+    -------------------------------------------------------------------------
+    trigram DP, beam=4           95.61%    98.09%       67.00%      8        
+    trigram DP, exact  [n=40]    96.53%    98.62%       65.00%      391      
+    trigram DP, beam   [same n]  96.82%    98.77%       67.50%      8        
+
+  tuning tagger on dev ...
+    order=2 (history of 1 tags)  accuracy=0.9583
+    order=3 (history of 2 tags)  accuracy=0.9636
+
+  tagger trained in 4.1s   order=3   tags=11   lambdas={1: 0.193, 2: 0.3, 3: 0.508}
+
+  PART 2 -- Tagging on gold segmentation (test sample)
+    model                         accuracy  known   unknown  exact sent  ms/sent  
+    ------------------------------------------------------------------------------
+    most-frequent-tag (baseline)  93.64%    94.36%  64.88%   36.75%      -        
+    HMM, order=3 (Viterbi)        96.19%    96.43%  86.31%   57.00%      0.3      
+    OOV rate on the test sample: 2.44%
+
+  PART 2 -- Most confused tag pairs (HMM)
+    gold  predicted  count  
+    ------------------------
+    VERB  NOUN       35     
+    NOUN  VERB       24     
+    ADV   ADJ        20     
+    ADJ   NOUN       19     
+    PRT   ADP        17     
+    ADP   PRT        16     
+
+  PART 1 + 2 -- End to end: DP segmentation then HMM tagging
+    system                           accuracy  tag acc | correct span  seg-induced errors  genuine errors  % from segmentation  
+    ----------------------------------------------------------------------------------------------------------------------------
+    DP segment -> most-frequent tag  90.44%    94.12%                  269                 388             40.94%               
+    DP segment -> HMM tag            92.62%    96.40%                  269                 238             53.06%               
+
+  PART 3 -- Brown carries no morphological features
+    plain tagset=11   morphology-aware tagset=11  (identical)
+    With no gender or number to attach, the refined tagset IS the
+    plain one, so the two taggers are the same model and agreement
+    cannot be measured.  This is a fact about the corpus, not about
+    the language: a UD English treebank would carry FEATS.
+
+  PART 4 -- Improvement over the simple baselines (test sample)
+    task                            baseline  model   absolute gain  error reduction  
+    ----------------------------------------------------------------------------------
+    Segmentation (token F1)         66.71%    95.61%  +28.91 pp      86.82%           
+    Segmentation (exact sentences)  16.25%    67.00%  +50.75 pp      60.60%           
+    Tagging, gold segmentation      93.64%    96.19%  +2.55 pp       40.05%           
+    End to end (segment + tag)      68.68%    92.62%  +23.94 pp      76.44%           
+    baselines: greedy longest-match (0.04 ms/sent, vs 8 for the DP decoder) and most-frequent-tag
+
+  PART 5 -- Confusion matrix, gold segmentation (rows = gold, columns = predicted)
+    gold \ pred  NOUN  VERB  ADP  DET  ADJ  ADV  PRON  CONJ  other  recall  
+    ------------------------------------------------------------------------
+    NOUN         1840  24    1    3    14   1    0     0     14     97.0%   
+    VERB         35    1238  1    0    7    0    0     0     0      96.6%   
+    ADP          0     0     972  2    0    8    1     1     16     97.2%   
+    DET          0     0     8    883  0    0    6     0     0      98.4%   
+    ADJ          19    7     0    0    554  13   0     0     0      93.4%   
+    ADV          1     1     10   5    20   343  0     1     4      89.1%   
+    PRON         0     0     4    1    0    0    317   0     0      98.4%   
+    CONJ         0     0     0    0    0    1    0     248   0      99.6%   
+
+  PART 5 -- Per-tag accuracy, hardest first
+    tag   gold count  precision  recall  F1      
+    ---------------------------------------------
+    PRT   207         88.94%     85.51%  87.19%  
+    ADV   385         92.45%     89.09%  90.74%  
+    NUM   40          92.50%     92.50%  92.50%  
+    ADJ   593         92.64%     93.42%  93.03%  
+    ADP   1000        95.95%     97.20%  96.57%  
+    NOUN  1897        96.79%     97.00%  96.89%  
+    VERB  1281        97.40%     96.64%  97.02%  
+    PRON  322         97.84%     98.45%  98.14%  
+
+  PART 5 -- Most confused tag pairs
+    gold  predicted  count  share of that gold tag  
+    ------------------------------------------------
+    VERB  NOUN       35     2.7% of VERB            
+    NOUN  VERB       24     1.3% of NOUN            
+    ADV   ADJ        20     5.2% of ADV             
+    ADJ   NOUN       19     3.2% of ADJ             
+    PRT   ADP        17     8.2% of PRT             
+    ADP   PRT        16     1.6% of ADP             
+    NOUN  ADJ        14     0.7% of NOUN            
+    ADJ   ADV        13     2.2% of ADJ             
+
+  PART 5 -- Where the end-to-end errors come from
+    system                             errors  seg-induced  genuine  % from segmentation  tag acc | correct span  
+    --------------------------------------------------------------------------------------------------------------
+    greedy + most-frequent (baseline)  2152    1861         291      86.48%               94.19%                  
+    DP segment -> most-frequent tag    657     269          388      40.94%               94.12%                  
+    DP segment -> HMM tag              507     269          238      53.06%               96.40%                  
+    'Genuine' means the character span was recovered exactly and the
+    tag is still wrong; every other error had no tag decision to make.
+
+  PART 5 -- Segmentation-induced errors (the tagger never saw the word)
+    gold word    gold tag  what the segmenter produced  
+    ----------------------------------------------------
+    unfailing    ADJ       un + failing                 
+    nonwhite     ADJ       non + white                  
+    dallasbased  ADJ       dallas + based               
+    aces         NOUN      aceswetoss                   
+    we           PRON      aceswetoss                   
+
+  PART 5 -- Genuine tagging errors (word correct, tag wrong)
+    word   gold tag  predicted tag  
+    --------------------------------
+    that   DET       ADP            
+    that   PRON      ADP            
+    plays  VERB      NOUN           
+    firm   NOUN      ADJ            
+    that   DET       PRON           
+
+  models saved -> models/q1_english.pkl (29.4 MB)
+
+  Sample outputs (English)
+    input : thequickbrownfoxjumpsoverthelazydog
+    words : the quick brown fox jumps over the lazy dog
+    tagged: [(the, DET), (quick, ADJ), (brown, NOUN), (fox, NOUN), (jumps, VERB), (over, ADP), (the, DET), (lazy, ADJ), (dog, NOUN)]
+
+    input : thegovernmentannouncedanewplanlastweek
+    words : the government announced a new plan last week
+    tagged: [(the, DET), (government, NOUN), (announced, VERB), (a, DET), (new, ADJ), (plan, NOUN), (last, ADJ), (week, NOUN)]
+
+    input : shesaidthatthebookwasonthetable
+    words : she said that the book was on the table
+    tagged: [(she, PRON), (said, VERB), (that, ADP), (the, DET), (book, NOUN), (was, VERB), (on, ADP), (the, DET), (table, NOUN)]
+
+
+loading Spanish (UD Spanish-GSD) ...
+
+==============================================================================
+Spanish  --  UD Spanish-GSD
+==============================================================================
+  train=14,186 sentences   dev sample=200   test sample=400
+  trained in 1.0s   LM vocab=16,857   word types=39,748
+  dev perplexity (trigram word LM): 2233.0
+
+  tuning segmentation on dev ...
+    unk_penalty=  0.0  token F1=0.9157
+    unk_penalty= -2.0  token F1=0.9111
+    unk_penalty= -4.0  token F1=0.9037
+    unk_penalty= -6.0  token F1=0.8977
+    unk_penalty= -8.0  token F1=0.8882
+    beam=    4  token F1=0.9149  13 ms/sentence
+    beam=    8  token F1=0.9157  24 ms/sentence
+    beam=   16  token F1=0.9157  46 ms/sentence
+
+  selected config: DecoderConfig(max_word_len=19, beam_width=8, unk_penalty=0.0, alpha=1.0, beta=1.0, restrict_to_vocab=False)
+
+  PART 1 -- Segmentation (test sample)
+    model                        token F1  boundary F1  exact sent  ms/sent  
+    -------------------------------------------------------------------------
+    trigram DP, beam=8           91.59%    96.22%       38.75%      25       
+    trigram DP, exact  [n=40]    92.91%    96.80%       47.50%      947      
+    trigram DP, beam   [same n]  92.91%    96.80%       47.50%      25       
+
+  tuning tagger on dev ...
+    order=2 (history of 1 tags)  accuracy=0.9273
+    order=3 (history of 2 tags)  accuracy=0.9299
+
+  tagger trained in 2.9s   order=3   tags=16   lambdas={1: 0.165, 2: 0.378, 3: 0.457}
+
+  PART 2 -- Tagging on gold segmentation (test sample)
+    model                         accuracy  known   unknown  exact sent  ms/sent  
+    ------------------------------------------------------------------------------
+    most-frequent-tag (baseline)  88.72%    93.51%  21.47%   13.25%      -        
+    HMM, order=3 (Viterbi)        93.75%    94.98%  76.53%   31.25%      1.3      
+    OOV rate on the test sample: 6.66%
+
+  PART 2 -- Most confused tag pairs (HMM)
+    gold   predicted  count  
+    -------------------------
+    PROPN  NOUN       75     
+    NOUN   PROPN      50     
+    NOUN   ADJ        42     
+    PRON   DET        42     
+    VERB   AUX        40     
+    CCONJ  SCONJ      32     
+
+  PART 1 + 2 -- End to end: DP segmentation then HMM tagging
+    system                           accuracy  tag acc | correct span  seg-induced errors  genuine errors  % from segmentation  
+    ----------------------------------------------------------------------------------------------------------------------------
+    DP segment -> most-frequent tag  83.91%    91.69%                  831                 745             52.73%               
+    DP segment -> HMM tag            86.75%    94.79%                  831                 467             64.02%               
+
+  training morphology-aware tagger (order=3) ...
+    trained in 1.7s   plain tagset=16   morphology-aware tagset=78
+
+  PART 3 -- Morphology-aware tagging, on its own label set
+    model                         labels  accuracy  unknown  
+    ---------------------------------------------------------
+    most-frequent-tag (baseline)  78      87.67%    -        
+    HMM, order=3 (Viterbi)        78      91.72%    71.01%   
+    Not comparable with Part 2: this is a harder decision, over more
+    labels.  The like-for-like comparison is the next table.
+
+  PART 3 -- Same decision: everything projected to coarse tags
+    model                                      coarse-tag accuracy  vs its plain counterpart  
+    ------------------------------------------------------------------------------------------
+    most-frequent-tag, plain tagset            88.72%               -                         
+    most-frequent-tag, morph tagset -> coarse  89.74%               +1.02 pp                  
+    HMM, plain tagset                          93.75%               -                         
+    HMM, morph tagset -> coarse                94.23%               +0.48 pp                  
+
+  PART 3 -- Agreement reproduced (2,625 gold-agreeing adjacent pairs)
+    context       pairs  agreement reproduced  and values correct  
+    ---------------------------------------------------------------
+    ALL CONTEXTS  2625   96.46%                96.46%              
+    DET+NOUN      1163   97.68%                97.68%              
+    NOUN+ADJ      281    97.15%                97.15%              
+    ADJ+NOUN      156    98.72%                98.72%              
+    VERB+DET      133    97.74%                97.74%              
+    DET+ADJ       116    99.14%                99.14%              
+    NOUN+VERB     84     95.24%                95.24%              
+    AUX+VERB      72     100.00%               100.00%             
+    PRON+VERB     60     96.67%                96.67%              
+    NOUN+AUX      49     97.96%                97.96%              
+    AUX+DET       49     100.00%               100.00%             
+    NOUN+DET      48     100.00%               100.00%             
+    AUX+ADJ       33     100.00%               100.00%             
+    ADJ+VERB      33     100.00%               100.00%             
+    NUM+NOUN      25     100.00%               100.00%             
+    NOUN+NOUN     24     70.83%                70.83%              
+    ADJ+ADJ       24     95.83%                95.83%              
+    DET+DET       24     100.00%               100.00%             
+    VERB+NOUN     22     95.45%                95.45%              
+    DET+PRON      21     100.00%               100.00%             
+    PRON+AUX      21     100.00%               100.00%             
+    DET+PROPN     14     71.43%                71.43%              
+    PRON+PRON     13     92.31%                92.31%              
+    VERB+PRON     13     76.92%                76.92%              
+    ADJ+DET       12     100.00%               100.00%             
+    DET+NUM       11     90.91%                90.91%              
+    PRON+NOUN     11     90.91%                90.91%              
+    AUX+PRON      11     100.00%               100.00%             
+    NOUN+PRON     10     80.00%                80.00%              
+    ADJ+AUX       10     80.00%                80.00%              
+
+  PART 3 -- Agreement end to end (DP segmentation, then morph tagging)
+    scored              pairs  agreement reproduced  pairs lost to segmentation  
+    -----------------------------------------------------------------------------
+    on gold words       2625   96.46%                -                           
+    on predicted words  2625   86.06%                305                         
+
+  PART 3 -- The learned pattern, read out of the transition model
+    context                      P(agreeing ADJ)  P(clashing ADJ)  ratio  P(gender-unmarked ADJ)  
+    ----------------------------------------------------------------------------------------------
+    DET-Masc-Sg NOUN-Masc-Sg __  0.0848           0.0047           18x    0.0649                  
+    DET-Fem-Sg NOUN-Fem-Sg __    0.0866           0.0065           13x    0.0706                  
+    DET-Masc-Pl NOUN-Masc-Pl __  0.0870           0.0072           12x    0.0630                  
+    DET-Fem-Pl NOUN-Fem-Pl __    0.1042           0.0085           12x    0.0795                  
+
+  PART 4 -- Improvement over the simple baselines (test sample)
+    task                            baseline  model   absolute gain  error reduction  
+    ----------------------------------------------------------------------------------
+    Segmentation (token F1)         50.20%    91.59%  +41.39 pp      83.11%           
+    Segmentation (exact sentences)  5.75%     38.75%  +33.00 pp      35.01%           
+    Tagging, gold segmentation      88.72%    93.75%  +5.03 pp       44.62%           
+    End to end (segment + tag)      53.21%    86.75%  +33.54 pp      71.68%           
+    baselines: greedy longest-match (0.06 ms/sent, vs 25 for the DP decoder) and most-frequent-tag
+
+  PART 5 -- Confusion matrix, gold segmentation (rows = gold, columns = predicted)
+    gold \ pred  NOUN  ADP   DET   VERB  PROPN  ADJ  PRON  ADV  other  recall  
+    ---------------------------------------------------------------------------
+    NOUN         1989  0     0     18    50     42   0     1    5      94.5%   
+    ADP          0     1740  0     0     3      0    0     0    10     99.3%   
+    DET          0     0     1571  0     3      0    9     0    2      99.1%   
+    VERB         17    1     3     990   13     21   0     1    42     91.0%   
+    PROPN        75    1     0     9     597    24   0     1    15     82.7%   
+    ADJ          22    0     5     21    7      575  0     2    1      90.8%   
+    PRON         3     0     42    0     0      0    359   0    12     86.3%   
+    ADV          3     4     0     0     2      4    12    377  3      93.1%   
+
+  PART 5 -- Per-tag accuracy, hardest first
+    tag    gold count  precision  recall  F1      
+    ----------------------------------------------
+    X      41          25.00%     19.51%  21.92%  
+    PROPN  722         86.27%     82.69%  84.44%  
+    NUM    50          97.56%     80.00%  87.91%  
+    ADJ    633         85.82%     90.84%  88.26%  
+    PRON   416         93.25%     86.30%  89.64%  
+    SCONJ  318         84.76%     96.23%  90.13%  
+    CCONJ  367         97.58%     88.01%  92.55%  
+    VERB   1088        95.10%     90.99%  93.00%  
+
+  PART 5 -- Most confused tag pairs
+    gold   predicted  count  share of that gold tag  
+    -------------------------------------------------
+    PROPN  NOUN       75     10.4% of PROPN          
+    NOUN   PROPN      50     2.4% of NOUN            
+    NOUN   ADJ        42     2.0% of NOUN            
+    PRON   DET        42     10.1% of PRON           
+    VERB   AUX        40     3.7% of VERB            
+    CCONJ  SCONJ      32     8.7% of CCONJ           
+    PROPN  ADJ        24     3.3% of PROPN           
+    ADJ    NOUN       22     3.5% of ADJ             
+
+  PART 5 -- Where the end-to-end errors come from
+    system                             errors  seg-induced  genuine  % from segmentation  tag acc | correct span  
+    --------------------------------------------------------------------------------------------------------------
+    greedy + most-frequent (baseline)  4583    4162         421      90.81%               92.53%                  
+    DP segment -> most-frequent tag    1576    831          745      52.73%               91.69%                  
+    DP segment -> HMM tag              1298    831          467      64.02%               94.79%                  
+    'Genuine' means the character span was recovered exactly and the
+    tag is still wrong; every other error had no tag decision to make.
+
+  PART 5 -- Segmentation-induced errors (the tagger never saw the word)
+    gold word     gold tag  what the segmenter produced  
+    -----------------------------------------------------
+    burocracias   NOUN      burocraciasmedicas           
+    medicas       ADJ       burocraciasmedicas           
+    sorprendente  ADJ       sorprende + ntefrialdad      
+    frialdad      NOUN      ntefrialdad                  
+    y             CCONJ     yneville                     
+
+  PART 5 -- Genuine tagging errors (word correct, tag wrong)
+    word      gold tag  predicted tag  
+    -----------------------------------
+    eran      VERB      AUX            
+    bregada   VERB      ADJ            
+    que       PRON      SCONJ          
+    bolsillo  NOUN      PROPN          
+    la        PRON      DET            
+
+  models saved -> models/q1_spanish.pkl (16.5 MB)
+
+  Sample outputs (Spanish)
+    input : mispadrespuedenviajar
+    words : mis padres pueden viajar
+    tagged: [(mis, DET), (padres, NOUN), (pueden, AUX), (viajar, VERB)]
+    morph : mis/DET-Pl padres/NOUN-Masc-Pl pueden/AUX-Pl viajar/VERB
+
+    input : elcielodespejadoesazul
+    words : el cielo de spejado es azul
+    tagged: [(el, DET), (cielo, NOUN), (de, ADP), (spejado, NOUN), (es, AUX), (azul, ADJ)]
+    morph : el/DET-Masc-Sg cielo/NOUN-Masc-Sg de/ADP spejado/NOUN-Masc-Sg es/AUX-Sg azul/ADJ-Sg
+
+    input : lacasarojaesgrande
+    words : la casa roja es grande
+    tagged: [(la, DET), (casa, NOUN), (roja, ADJ), (es, AUX), (grande, ADJ)]
+    morph : la/DET-Fem-Sg casa/NOUN-Fem-Sg roja/ADJ-Fem-Sg es/AUX-Sg grande/ADJ-Sg
+
+    input : lascasasrojassongrandes
+    words : las casas rojas son grandes
+    tagged: [(las, DET), (casas, NOUN), (rojas, ADJ), (son, AUX), (grandes, ADJ)]
+    morph : las/DET-Fem-Pl casas/NOUN-Fem-Pl rojas/ADJ-Fem-Pl son/AUX-Pl grandes/ADJ-Pl
+
+
+results written -> models/q1_results.json

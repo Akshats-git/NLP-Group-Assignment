@@ -28,9 +28,14 @@ pip install -r requirements.txt
 # The UD English-EWT data should be in data/
 # If not already cloned:
 git clone https://github.com/UniversalDependencies/UD_English-EWT.git data/UD_English-EWT
-ln -sf data/UD_English-EWT/en_ewt-ud-train.conllu data/en_ewt-ud-train.conllu
-ln -sf data/UD_English-EWT/en_ewt-ud-dev.conllu data/en_ewt-ud-dev.conllu
+ln -sf UD_English-EWT/en_ewt-ud-train.conllu data/en_ewt-ud-train.conllu
+ln -sf UD_English-EWT/en_ewt-ud-dev.conllu data/en_ewt-ud-dev.conllu
 ```
+
+Note: the symlink target is resolved relative to the symlink's own directory
+(`data/`), not your shell's working directory — so the target must be
+`UD_English-EWT/...`, not `data/UD_English-EWT/...`, or you'll get a dangling
+link.
 
 ## Usage
 
@@ -58,7 +63,7 @@ python demo.py
 ## Project Structure
 
 ```
-question2_dependency_parser/
+Question-2/
 ├── data/
 │   ├── en_ewt-ud-train.conllu     # Training data (symlink)
 │   ├── en_ewt-ud-dev.conllu       # Dev data (symlink)

@@ -5,6 +5,11 @@ Integrates:
 1. Joint Segmentation + POS tagging (Question 1)
 2. Spelling Correction via SymDel (Question 3)
 3. Language Model Grammar Checking + PCFG Constituency Parser (Question 4)
+
+Text arrives one token at a time, either streamed from a sampled passage or
+typed by hand, and the same checks run on it either way. Once the passage is
+finished the editor scores every sentence with the parser and both n-gram
+models and shows the Part 4 comparison table.
 """
 from __future__ import annotations
 
@@ -83,32 +88,43 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+from q4.analysis import agreement_summary, analyse_document, load_floors, summary_rows
+from q4.grammar import TRIGGER_N
+from q4.passage import MERGE_PROB, passage_token_stream, sample_passage
+from q4.pipeline import LiveDocument, check_token, check_window
 
-def init_session():
-    defaults = {
-        "models": None,
-        "pcfg": None,
+
+def new_session_state() -> dict:
+    return {
         "editor_text": "",
         "alerts": [],
-        "word_buffer": [],
+        "document": LiveDocument(),
+        "live_flags": [],
         "word_count": 0,
+        "next_trigger": TRIGGER_N,
         "sim_running": False,
-        "parse_history": [],
         "latency_seg": [],
         "latency_grammar": [],
+        "latency_analysis": 0.0,
         "passage_tokens": [],
         "passage_idx": 0,
         "live_text": "",
+        "analysis": None,
+        "agreement": None,
+        "benchmark": None,
     }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+
+
+def init_session() -> None:
+    for key, value in new_session_state().items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
 init_session()
 
 
-@st.cache_resource(show_spinner="Loading Q1 and Q3 language models...")
+@st.cache_resource(show_spinner="Loading Q1, Q3 and Q4 language models...")
 def get_models():
     from q4.model_loader import load_all_models
     return load_all_models()
@@ -120,99 +136,82 @@ def get_pcfg():
     return train_pcfg(cache=True, min_count=2)
 
 
-from q4.grammar import TRIGGER_N, check_grammar_window
-from q4.passage import MERGE_PROB, passage_token_stream, sample_passage
-from q4.pcfg import parse_sentence
-from q4.segmentation import check_token_segmentation
-from q4.spelling import check_token_spelling
+@st.cache_resource(show_spinner="Loading the calibrated score floors...")
+def get_floors(_models, _pcfg):
+    return load_floors(_models, _pcfg, _models["q1_tagger"])
 
 
-def clean_word(token: str) -> str:
-    return "".join(c for c in token.lower() if c.isalpha())
+def flag_current_sentence() -> None:
+    """Mark the sentence being typed as one the live layer complained about."""
+    index = len(st.session_state.document.sentences)
+    flags = st.session_state.live_flags
+    while len(flags) <= index:
+        flags.append(False)
+    flags[index] = True
 
 
-def process_token(token: str, models, pcfg) -> list[dict]:
-    alerts = []
-    word = clean_word(token)
-    if not word:
-        return alerts
+def process_token(token: str, models, sentence_end: bool = False) -> None:
+    """Run the live checks on one token and fold it into the document."""
+    outcome = check_token(token, models)
+    st.session_state.latency_seg.append(outcome.latency_ms)
 
-    t0 = time.perf_counter()
+    for alert in outcome.alerts:
+        flag_current_sentence()
+        st.session_state.alerts.append(
+            {"type": alert.kind, "detail": alert.detail, "latency": alert.latency_ms}
+        )
 
-    # 1. Segmentation Check
-    seg_res = check_token_segmentation(
-        word,
-        lm=models["q1_lm"],
-        config=models["q1_config"],
-        tagger=models["q1_tagger"],
-        vocab=models["q1_vocab"],
-    )
-    if seg_res.fired:
-        alerts.append({
-            "type": "SEGMENT",
-            "token": token,
-            "detail": f"Split '{token}' -> {' + '.join(seg_res.words)} [{', '.join(seg_res.pos_tags)}]",
-            "latency": seg_res.latency_ms,
-        })
-        word = seg_res.words[0] if seg_res.words else word
-
-    # 2. Spelling Check
-    spell_res = check_token_spelling(word, models["corrector"], models["q3_vocab"])
-    if spell_res.fired:
-        alerts.append({
-            "type": "SPELL",
-            "token": token,
-            "detail": f"Spelling: '{token}' -> suggest '{spell_res.suggestion}'",
-            "latency": spell_res.latency_ms,
-        })
-
-    st.session_state.latency_seg.append((time.perf_counter() - t0) * 1000)
-    return alerts
+    st.session_state.word_count += len(outcome.words)
+    st.session_state.document.add(outcome, force_sentence_end=sentence_end)
 
 
-def process_grammar(models) -> list[dict]:
-    alerts = []
-    window = list(st.session_state.word_buffer)[-TRIGGER_N:]
+def process_grammar(models, trigger_n: int, threshold: float) -> None:
+    """Run the grammar and real-word check over the last trigger_n words."""
+    window = st.session_state.document.words()[-trigger_n:]
     if len(window) < 2:
-        return alerts
-
-    res = check_grammar_window(
-        window,
-        lm=models["q1_lm"],
-        corrector=models["corrector"],
-        q3_bigram=models["q3_bigram"],
-        q3_unigram=models["q3_unigram"],
-        q3_vocab_size=models["q3_vocab_size"],
-        q3_k=models["q3_k"],
-        q3_vocab=models["q3_vocab"],
-    )
-    st.session_state.latency_grammar.append(res.latency_ms)
-
-    if res.fired:
-        msg = f"Grammar check (PPL: {res.ppl:.1f})"
-        if res.real_word_fixes:
-            fixes = ", ".join(f"{f.original}->{f.suggestion}" for f in res.real_word_fixes)
-            msg += f" | Real-word: {fixes}"
-        alerts.append({
-            "type": "GRAMMAR",
-            "detail": msg,
-            "latency": res.latency_ms,
-        })
-    return alerts
-
-
-def process_parse(sentence_tokens: list[str], models, pcfg):
-    words = [clean_word(t) for t in sentence_tokens if clean_word(t)]
-    if not words or not pcfg:
         return
-    tags = models["q1_tagger"].tag(tuple(words))
-    res = parse_sentence(tuple(words), tags, pcfg)
-    st.session_state.parse_history.append(res)
+
+    result = check_window(window, models, ppl_threshold=threshold)
+    st.session_state.latency_grammar.append(result.latency_ms)
+    if not result.fired:
+        return
+
+    flag_current_sentence()
+    detail = f"Window perplexity {result.ppl:.0f} against threshold {threshold:.0f}"
+    if result.real_word_fixes:
+        fixes = ", ".join(
+            f"{fix.original} -> {fix.suggestion}" for fix in result.real_word_fixes
+        )
+        detail += f" | Real-word: {fixes}"
+    st.session_state.alerts.append(
+        {"type": "GRAMMAR", "detail": detail, "latency": result.latency_ms}
+    )
+
+
+def finish_and_analyse(models, pcfg, floors) -> None:
+    """Close the passage and run the end-of-passage analysis over it."""
+    document = st.session_state.document
+    document.close()
+
+    started = time.perf_counter()
+    analyses = analyse_document(document.sentences, pcfg, models, floors)
+    st.session_state.latency_analysis = (time.perf_counter() - started) * 1000
+
+    flags = st.session_state.live_flags
+    while len(flags) < len(analyses):
+        flags.append(False)
+
+    st.session_state.analysis = analyses
+    st.session_state.agreement = agreement_summary(analyses, flags)
 
 
 # Header
 st.title("NLP Group Assignment - Question 4 Editor")
 st.subheader("Joint Segmentation, Spelling Correction, Grammar Check & PCFG Parser")
+
+models = get_models()
+pcfg = get_pcfg()
+floors = get_floors(models, pcfg)
 
 # Sidebar
 with st.sidebar:
@@ -221,44 +220,69 @@ with st.sidebar:
 
     words_per_sec = st.slider("Typing Speed (words/sec)", 0.5, 5.0, 2.0, 0.5)
     merge_p = st.slider("Merge Error Probability (p)", 0.0, 0.25, MERGE_PROB, 0.01)
+    trigger_n = st.slider("Grammar Trigger Interval (N words)", 5, 30, TRIGGER_N, 1)
+    threshold = st.slider(
+        "Perplexity Threshold",
+        1000.0,
+        40000.0,
+        float(floors["window_ppl_p95"]),
+        500.0,
+        help="Default is the level only 5 percent of clean Brown windows exceed.",
+    )
 
     st.markdown("---")
     st.header("Latency Metrics")
 
-    l_seg = st.session_state.latency_seg
-    l_gram = st.session_state.latency_grammar
-    avg_seg = (sum(l_seg) / len(l_seg)) if l_seg else 0.0
-    avg_gram = (sum(l_gram) / len(l_gram)) if l_gram else 0.0
+    seg_latencies = st.session_state.latency_seg
+    grammar_latencies = st.session_state.latency_grammar
+    avg_seg = (sum(seg_latencies) / len(seg_latencies)) if seg_latencies else 0.0
+    avg_grammar = (
+        (sum(grammar_latencies) / len(grammar_latencies)) if grammar_latencies else 0.0
+    )
+    total_ms = sum(seg_latencies) + sum(grammar_latencies) + st.session_state.latency_analysis
 
     st.metric("Seg + Spell Check (avg)", f"{avg_seg:.2f} ms")
-    st.metric("Grammar Check (avg)", f"{avg_gram:.2f} ms")
+    st.metric("Grammar Check (avg)", f"{avg_grammar:.2f} ms")
+    st.metric("Total Pipeline Time", f"{total_ms:.0f} ms")
 
     if st.button("Reset Session"):
-        for k in ["editor_text", "alerts", "word_buffer", "word_count", "parse_history", "latency_seg", "latency_grammar", "sim_running", "passage_tokens", "passage_idx", "live_text"]:
-            st.session_state[k] = [] if isinstance(st.session_state[k], list) else (False if isinstance(st.session_state[k], bool) else (0 if isinstance(st.session_state[k], int) else ""))
+        for key, value in new_session_state().items():
+            st.session_state[key] = value
         st.rerun()
 
-models = get_models()
-pcfg = get_pcfg()
+    st.markdown("---")
+    with st.expander("Speed Demon benchmark"):
+        st.caption("1,000 corrupted words through both layers, as in Part 5.")
+        if st.button("Run benchmark"):
+            from q4.speed_demon import format_report, run_speed_demon
+
+            with st.spinner("Timing both layers..."):
+                st.session_state.benchmark = format_report(
+                    run_speed_demon(models, trigger_n=trigger_n)
+                )
+        if st.session_state.benchmark:
+            st.code(st.session_state.benchmark)
 
 col1, col2 = st.columns([3, 2])
 
 with col1:
     if mode == "Simulated Live Typing":
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         if c1.button("Start Passage Stream"):
-            passage, cname = sample_passage()
-            st.session_state.passage_tokens = list(passage_token_stream(passage, p=merge_p))
-            st.session_state.passage_idx = 0
+            passage, corpus_name = sample_passage()
+            for key, value in new_session_state().items():
+                st.session_state[key] = value
+            st.session_state.passage_tokens = list(
+                passage_token_stream(passage, p=merge_p)
+            )
             st.session_state.sim_running = True
-            st.session_state.editor_text = ""
-            st.session_state.alerts = []
-            st.session_state.word_buffer = []
-            st.session_state.parse_history = []
-            st.session_state.word_count = 0
 
         if c2.button("Stop Stream"):
             st.session_state.sim_running = False
+
+        if c3.button("Analyse Passage"):
+            st.session_state.sim_running = False
+            finish_and_analyse(models, pcfg, floors)
 
         box = st.empty()
         status = st.empty()
@@ -268,63 +292,60 @@ with col1:
             idx = st.session_state.passage_idx
             delay = 1.0 / words_per_sec
 
-            sentence_accum = []
             while idx < len(tokens) and st.session_state.sim_running:
-                token, is_sent_end = tokens[idx]
+                token, sentence_end = tokens[idx]
                 idx += 1
                 st.session_state.passage_idx = idx
 
-                st.session_state.editor_text += (" " if st.session_state.editor_text else "") + token
-                box.markdown(f'<div class="editor-container">{st.session_state.editor_text}▌</div>', unsafe_allow_html=True)
+                st.session_state.editor_text += (
+                    " " if st.session_state.editor_text else ""
+                ) + token
+                box.markdown(
+                    f'<div class="editor-container">{st.session_state.editor_text}▌</div>',
+                    unsafe_allow_html=True,
+                )
 
-                new_alerts = process_token(token, models, pcfg)
-                st.session_state.alerts.extend(new_alerts)
+                process_token(token, models, sentence_end=sentence_end)
 
-                w = clean_word(token)
-                if w:
-                    st.session_state.word_buffer.append(w)
-                    sentence_accum.append(token)
-                    st.session_state.word_count += 1
-
-                if st.session_state.word_count > 0 and st.session_state.word_count % TRIGGER_N == 0:
-                    st.session_state.alerts.extend(process_grammar(models))
-
-                if is_sent_end and sentence_accum:
-                    process_parse(sentence_accum, models, pcfg)
-                    sentence_accum = []
+                if st.session_state.word_count >= st.session_state.next_trigger:
+                    st.session_state.next_trigger += trigger_n
+                    process_grammar(models, trigger_n, threshold)
 
                 status.text(f"Streaming token {idx}/{len(tokens)}...")
                 time.sleep(delay)
 
-            box.markdown(f'<div class="editor-container">{st.session_state.editor_text}</div>', unsafe_allow_html=True)
+            box.markdown(
+                f'<div class="editor-container">{st.session_state.editor_text}</div>',
+                unsafe_allow_html=True,
+            )
             if idx >= len(tokens):
                 st.session_state.sim_running = False
-                status.text("Stream finished.")
+                status.text("Stream finished, running the end-of-passage analysis...")
+                finish_and_analyse(models, pcfg, floors)
+                st.rerun()
         else:
             text = st.session_state.editor_text or "Click 'Start Passage Stream' to simulate typing."
-            box.markdown(f'<div class="editor-container">{text}</div>', unsafe_allow_html=True)
+            box.markdown(
+                f'<div class="editor-container">{text}</div>', unsafe_allow_html=True
+            )
 
     else:
         st.subheader("Manual Text Input")
-        user_input = st.text_area("Type text here", value=st.session_state.live_text, height=140)
+        user_input = st.text_area(
+            "Type text here", value=st.session_state.live_text, height=140
+        )
 
         if user_input != st.session_state.live_text:
-            old_w = st.session_state.live_text.split()
-            new_w = user_input.split()
-            added = new_w[len(old_w):]
-            for t in added:
-                st.session_state.alerts.extend(process_token(t, models, pcfg))
-                w = clean_word(t)
-                if w:
-                    st.session_state.word_buffer.append(w)
-                    st.session_state.word_count += 1
-                if st.session_state.word_count % TRIGGER_N == 0 and st.session_state.word_count > 0:
-                    st.session_state.alerts.extend(process_grammar(models))
+            already_seen = len(st.session_state.live_text.split())
+            for token in user_input.split()[already_seen:]:
+                process_token(token, models)
+                if st.session_state.word_count >= st.session_state.next_trigger:
+                    st.session_state.next_trigger += trigger_n
+                    process_grammar(models, trigger_n, threshold)
             st.session_state.live_text = user_input
 
-        if st.button("Parse Current Text"):
-            if user_input:
-                process_parse(user_input.split(), models, pcfg)
+        if st.button("Analyse Text"):
+            finish_and_analyse(models, pcfg, floors)
 
 with col2:
     st.subheader("Live Pipeline Alerts")
@@ -332,23 +353,69 @@ with col2:
         st.info("No pipeline alerts triggered yet.")
     else:
         for alert in reversed(st.session_state.alerts[-15:]):
-            atype = alert["type"]
-            css_cls = "seg-alert" if atype == "SEGMENT" else ("spell-alert" if atype == "SPELL" else "grammar-alert")
+            kind = alert["type"]
+            css_class = (
+                "seg-alert"
+                if kind == "SEGMENT"
+                else ("spell-alert" if kind == "SPELL" else "grammar-alert")
+            )
             st.markdown(
-                f'<div class="alert-card {css_cls}"><b>[{atype}-ALERT]</b> {alert["detail"]} <br><small>Latency: {alert["latency"]:.2f} ms</small></div>',
+                f'<div class="alert-card {css_class}"><b>[{kind}-ALERT]</b> {alert["detail"]}'
+                f'<br><small>Latency: {alert["latency"]:.2f} ms</small></div>',
                 unsafe_allow_html=True,
             )
 
-    st.markdown("---")
-    st.subheader("PCFG Constituency Parse Trees")
-    if not st.session_state.parse_history:
-        st.caption("Parse trees for completed sentences will appear here.")
-    else:
-        for i, res in enumerate(reversed(st.session_state.parse_history[-5:])):
-            sent = " ".join(res["words"])
-            with st.expander(f"Sentence: {sent[:40]}..."):
-                st.write("**Penn Treebank POS tags:**", " ".join(res["ptb_tags"]))
-                if res["parseable"]:
-                    st.markdown(f'<div class="tree-container">{res["parse"]}</div>', unsafe_allow_html=True)
-                else:
-                    st.warning("Unparseable under PCFG grammar.")
+st.markdown("---")
+st.subheader("Final Passage Analysis")
+
+if not st.session_state.analysis:
+    st.caption(
+        "Finish the passage to score every sentence with the PCFG parser and both n-gram models."
+    )
+else:
+    analyses = st.session_state.analysis
+    agreement = st.session_state.agreement
+
+    st.dataframe(summary_rows(analyses), width="stretch", hide_index=True)
+    st.caption(
+        "PCFG and n-gram columns are per-word log probabilities. The chosen method is the"
+        " parser when it finds a parse that is not a probability outlier, the trigram when"
+        f" it has seen at least 80 percent of the sentence, and the bigram otherwise."
+    )
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Live alerts against the final verdict**")
+        st.write(
+            {
+                "sentences": agreement["sentences"],
+                "flagged by both": agreement["both_flagged"],
+                "live alert only": agreement["live_only"],
+                "final verdict only": agreement["final_only"],
+                "clean for both": agreement["neither"],
+                "agreement": f"{agreement['agreement']:.0%}",
+            }
+        )
+    with right:
+        st.markdown("**Timing**")
+        st.write(
+            {
+                "tokens checked": len(st.session_state.latency_seg),
+                "grammar triggers": len(st.session_state.latency_grammar),
+                "end-of-passage analysis": f"{st.session_state.latency_analysis:.1f} ms",
+                "total pipeline time": f"{total_ms:.0f} ms",
+            }
+        )
+
+    st.markdown("**PCFG Constituency Parse Trees**")
+    for item in analyses:
+        with st.expander(f"{item.index}. {item.text[:60]}"):
+            st.write("Penn Treebank POS tags:", " ".join(item.ptb_tags))
+            st.write("Chosen method:", item.chosen_method, "because", item.chosen_reason)
+            if item.pcfg_parseable:
+                st.markdown(
+                    f'<div class="tree-container">{item.pcfg_parse}</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.warning("Unparseable under the pruned Penn Treebank grammar.")

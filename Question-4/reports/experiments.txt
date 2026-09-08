@@ -1,0 +1,34 @@
+Q4 experiments
+trigger N = 10, merge probability p = 0.08, perplexity threshold = 17344
+==============================================================================
+
+1. Passage sweep over 20 sampled passages
+   sentences                : 128
+   alerts                   : {'SEGMENT': 177, 'SPELL': 51, 'GRAMMAR': 74}
+   sentences that parsed    : 16.4%
+   chosen method            : {'trigram': 101, 'pcfg': 21, 'bigram': 6}
+   verdicts                 : {'grammatical': 107, 'borderline': 11, 'ungrammatical': 10}
+   live vs final            : both 18, live only 78, final only 3, clean 29, agreement 37%
+   per-token latency        : mean 0.15 ms, p95 1.12 ms, max 11.48 ms
+   per-trigger latency      : mean 0.53 ms, p95 0.66 ms
+
+2. Merge probability against segmentation alerts
+   p      segment alerts  per 100 words
+   0.00   30              1.27
+   0.04   115             4.87
+   0.08   177             7.50
+   0.16   304             12.89
+   at p = 0 no token was ever merged, so every alert there is a false one
+
+3. Trigger interval against the grammar false-alert rate on clean Brown text
+   N     windows  fired  perplexity only  real-word only  rate
+   5     400      64     52               11              16%
+   10    400      48     31               17              12%
+   20    400      80     6                73              20%
+   every window here is real Brown text, so all of these are false alerts
+
+4. Tagset reconciliation cost over 200 treebank sentences
+   mapped tags match the treebank tag : 58.2%
+   parse rate with mapped tags        : 39.0%
+   parse rate with the treebank tags  : 42.5%
+

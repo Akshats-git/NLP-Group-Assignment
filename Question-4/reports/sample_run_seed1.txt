@@ -1,0 +1,62 @@
+==============================================================================
+Q4 live editor run
+corpus brown, 6 sentences, 144 tokens typed
+merge probability p = 0.08, grammar trigger N = 10
+perplexity threshold = 17344 (95th percentile of clean Brown windows)
+==============================================================================
+
+Typed text as it arrives
+  The brothers continued to help each other during their studies, sharing a jointpurse , lodging together in thedormitoryand dining together at the homeof their aunt . They supplemented their income by smallgovernment assistance , by tutoring and economizing wherever they could . So impressive were those serious years of study at the universitythat Hans later wrote , `` to be perfectly free , the young man mustrevelin the great kingdom of thought and imagination ; ; there is a struggle there , in which , ifhe falls , it is easy for him torise again , there is freedom of utterance there , which drawsafter it no irreparable consequences on society . I lived in this onward-drivingcontestwhere each day overcame a newdifficulty , gained a new truth , or banisheda previous error '' . He openly proclaimed his pleasure inlecturingand writing about science .
+
+Live alerts
+  [SEGMENT-ALERT] Split 'jointpurse' -> joint + purse [ADJ, NOUN]  (21.64 ms)
+  [SEGMENT-ALERT] Split 'thedormitoryand' -> the + dormitory + and [DET, NOUN, CONJ]  (3.47 ms)
+  [SEGMENT-ALERT] Split 'homeof' -> home + of [NOUN, ADP]  (0.39 ms)
+  [SEGMENT-ALERT] Split 'smallgovernment' -> small + government [ADJ, NOUN]  (3.39 ms)
+  [GRAMMAR-ALERT] window perplexity 587, real-word suggestion so -> do  (0.49 ms)
+  [SEGMENT-ALERT] Split 'universitythat' -> university + that [NOUN, ADP]  (2.67 ms)
+  [GRAMMAR-ALERT] window perplexity 109, real-word suggestion hans -> has  (0.60 ms)
+  [SEGMENT-ALERT] Split 'mustrevelin' -> must + revel + in [VERB, VERB, ADP]  (1.62 ms)
+  [SEGMENT-ALERT] Split 'ifhe' -> if + he [ADP, PRON]  (0.16 ms)
+  [GRAMMAR-ALERT] window perplexity 89, real-word suggestion falls -> calls  (0.61 ms)
+  [SEGMENT-ALERT] Split 'torise' -> to + rise [PRT, VERB]  (0.46 ms)
+  [SEGMENT-ALERT] Split 'drawsafter' -> draws + after [VERB, ADP]  (1.34 ms)
+  [GRAMMAR-ALERT] window perplexity 485, real-word suggestion on -> of  (0.72 ms)
+  [SEGMENT-ALERT] Split 'onward-drivingcontestwhere' -> on + ward + driving + contest + where [ADP, NOUN, VERB, NOUN, ADV]  (32.46 ms)
+  [GRAMMAR-ALERT] window perplexity 1508, real-word suggestion on -> one  (0.55 ms)
+  [SEGMENT-ALERT] Split 'newdifficulty' -> new + difficulty [ADJ, NOUN]  (2.16 ms)
+  [SEGMENT-ALERT] Split 'banisheda' -> banished + a [VERB, DET]  (1.02 ms)
+  [SEGMENT-ALERT] Split 'inlecturingand' -> in + lecturing + and [ADP, VERB, CONJ]  (2.60 ms)
+
+Corrected text
+  1. the brothers continued to help each other during their studies sharing a joint purse lodging together in the dormitory and dining together at the home of their aunt
+  2. they supplemented their income by small government assistance by tutoring and economizing wherever they could
+  3. so impressive were those serious years of study at the university that hans later wrote to be perfectly free the young man must revel in the great kingdom of thought and imagination
+  4. there is a struggle there in which if he falls it is easy for him to rise again there is freedom of utterance there which draws after it no irreparable consequences on society
+  5. i lived in this on ward driving contest where each day overcame a new difficulty gained a new truth or banished a previous error
+  6. he openly proclaimed his pleasure in lecturing and writing about science
+
+Part 4 summary table
+#  sentence                                        pcfg         bigram  trigram  chosen method  verdict      merges resolved  spelling fixes
+--------------------------------------------------------------------------------------------------------------------------------------------
+1  the brothers continued to help each other d...  unparseable  -5.42   -3.69    trigram        grammatical  4                0             
+2  they supplemented their income by small gov...  unparseable  -6.05   -3.59    trigram        grammatical  1                0             
+3  so impressive were those serious years of s...  unparseable  -5.43   -3.73    trigram        grammatical  3                0             
+4  there is a struggle there in which if he fa...  unparseable  -5.34   -3.54    trigram        grammatical  3                0             
+5  i lived in this on ward driving contest whe...  unparseable  -6.45   -5.09    trigram        grammatical  6                0             
+6  he openly proclaimed his pleasure in lectur...  unparseable  -6.31   -3.59    trigram        grammatical  2                0             
+
+Live alerts against the final verdict
+  sentences               : 6
+  flagged by both layers  : 0
+  live alert only         : 6
+  final verdict only      : 0
+  clean for both          : 0
+  agreement               : 0%
+
+Latency
+  alerts fired            : {'SEGMENT': 13, 'SPELL': 0, 'GRAMMAR': 5}
+  per-token check         : 0.61 ms average over 144 tokens
+  per-trigger check       : 0.55 ms average over 14 triggers
+  end-of-passage analysis : 17.1 ms for 6 sentences
+  total                   : 113.6 ms

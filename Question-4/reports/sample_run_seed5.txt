@@ -1,0 +1,64 @@
+==============================================================================
+Q4 live editor run
+corpus gutenberg, 6 sentences, 144 tokens typed
+merge probability p = 0.08, grammar trigger N = 10
+perplexity threshold = 17344 (95th percentile of clean Brown windows)
+==============================================================================
+
+Typed text as it arrives
+  Piedro was taunted and treated with contemptat home and abroad . His father , when he foundthat his son ' s smartness was no longer usefulin making bargains , shoved him out of his way whenever he met him . All the food or clothesthat he hadat home seemed to be given to him grudgingly, andwith such expressionsas these : "Takethat ; but it is too good for you . You must eat this , now, instead of gourds and figs -- and be thankful you haveeven this ." Piedro spent awhole winter very unhappily . He expected that all hisold tricks, and especially what his father had said of him in the market - place , would be soon forgotten ; but month passed after month , and still these things were fresh in the memory of all who had known them .
+
+Live alerts
+  [SPELL-ALERT] Spelling: 'piedro' -> suggest 'pedro'  (0.03 ms)
+  [SEGMENT-ALERT] Split 'contemptat' -> contempt + at [NOUN, ADP]  (1.34 ms)
+  [SEGMENT-ALERT] Split 'foundthat' -> found + that [VERB, PRON]  (1.06 ms)
+  [SEGMENT-ALERT] Split 'usefulin' -> useful + in [ADJ, ADP]  (0.76 ms)
+  [GRAMMAR-ALERT] window perplexity 2242, real-word suggestion met -> let  (0.64 ms)
+  [SEGMENT-ALERT] Split 'clothesthat' -> clothes + that [NOUN, ADP]  (1.62 ms)
+  [SEGMENT-ALERT] Split 'hadat' -> had + at [VERB, ADP]  (0.27 ms)
+  [GRAMMAR-ALERT] window perplexity 1456, real-word suggestion or -> for  (0.66 ms)
+  [SEGMENT-ALERT] Split 'andwith' -> and + with [CONJ, ADP]  (0.62 ms)
+  [SEGMENT-ALERT] Split 'expressionsas' -> expressions + as [NOUN, ADP]  (2.38 ms)
+  [SEGMENT-ALERT] Split '"Takethat' -> take + that [VERB, PRON]  (0.66 ms)
+  [SPELL-ALERT] Spelling: 'gourds' -> suggest 'gourd'  (0.02 ms)
+  [SPELL-ALERT] Spelling: 'figs' -> suggest 'fits'  (0.03 ms)
+  [GRAMMAR-ALERT] window perplexity 4076, real-word suggestion eat -> at, now -> new, fits -> its  (0.49 ms)
+  [SEGMENT-ALERT] Split 'haveeven' -> have + even [VERB, ADV]  (0.80 ms)
+  [SPELL-ALERT] Spelling: 'piedro' -> suggest 'pedro'  (0.02 ms)
+  [SEGMENT-ALERT] Split 'awhole' -> a + whole [DET, ADJ]  (0.44 ms)
+  [SEGMENT-ALERT] Split 'hisold' -> his + old [DET, ADJ]  (0.41 ms)
+  [GRAMMAR-ALERT] window perplexity 7691, real-word suggestion what -> that, him -> his  (0.48 ms)
+  [GRAMMAR-ALERT] window perplexity 32426  (0.43 ms)
+
+Corrected text
+  1. pedro was taunted and treated with contempt at home and abroad
+  2. his father when he found that his son s smartness was no longer useful in making bargains shoved him out of his way whenever he met him
+  3. all the food or clothes that he had at home seemed to be given to him grudgingly and with such expressions as these take that but it is too good for you
+  4. you must eat this now instead of gourd and fits and be thankful you have even this
+  5. pedro spent a whole winter very unhappily
+  6. he expected that all his old tricks and especially what his father had said of him in the market place would be soon forgotten but month passed after month and still these things were fresh in the memory of all who had known them
+
+Part 4 summary table
+#  sentence                                        pcfg         bigram  trigram  chosen method  verdict        merges resolved  spelling fixes
+----------------------------------------------------------------------------------------------------------------------------------------------
+1  pedro was taunted and treated with contempt...  unparseable  -6.85   -7.04    trigram        grammatical    1                1             
+2  his father when he found that his son s sma...  unparseable  -5.7    -7.56    trigram        grammatical    2                0             
+3  all the food or clothes that he had at home...  unparseable  -6.14   -6.46    trigram        grammatical    5                0             
+4  you must eat this now instead of gourd and ...  unparseable  -8.02   -8.76    trigram        borderline     1                2             
+5  pedro spent a whole winter very unhappily       unparseable  -9.03   -9.9     trigram        ungrammatical  1                1             
+6  he expected that all his old tricks and esp...  unparseable  -6.5    -8.25    trigram        grammatical    1                0             
+
+Live alerts against the final verdict
+  sentences               : 6
+  flagged by both layers  : 2
+  live alert only         : 4
+  final verdict only      : 0
+  clean for both          : 0
+  agreement               : 33%
+
+Latency
+  alerts fired            : {'SEGMENT': 11, 'SPELL': 4, 'GRAMMAR': 5}
+  per-token check         : 0.12 ms average over 144 tokens
+  per-trigger check       : 0.54 ms average over 13 triggers
+  end-of-passage analysis : 15.7 ms for 6 sentences
+  total                   : 40.8 ms

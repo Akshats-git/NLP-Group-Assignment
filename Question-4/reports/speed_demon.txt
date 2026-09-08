@@ -1,0 +1,13 @@
+Q4 Speed Demon benchmark
+==============================================
+Batch                       : 1000 corrupted words
+Grammar trigger interval    : every 10 words (100 windows)
+
+Segmentation + spelling     : 0.807 s total, 0.807 ms per word
+Grammar trigger only        : 0.002 s total, 0.022 ms per window, 0.002 ms per word
+
+Added by the per-token layer: 0.805 ms per word (369.2x the grammar layer)
+
+Control batch of ordinary vocabulary words
+Segmentation + spelling     : 0.386 ms per word
+Grammar trigger only        : 0.262 ms per window, 0.026 ms per word

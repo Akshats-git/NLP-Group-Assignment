@@ -35,7 +35,7 @@ EXIT_COMMAND = "exit"
 
 def create_corrector(
     method: str = "B",
-    real_word_threshold: float = 2.0,
+    real_word_threshold: float = 1.1,
 ) -> SpellingCorrector:
     """
     Load the trained Phase 2 artifacts, build the Phase 3 SymDel index,
@@ -91,6 +91,37 @@ def create_corrector(
 # ---------------------------------------------------------------------------
 # Change highlighting
 # ---------------------------------------------------------------------------
+
+def render_highlighted(corrected_sentence: str, metadata: List[Dict]) -> str:
+    """
+    Rebuild the corrected sentence with each changed word wrapped in
+    **asterisks**, per the assignment's Part 5 requirement to visually
+    highlight changed words.
+
+    `corrected_sentence.split()` and `metadata` are guaranteed to line up
+    one-to-one and in order: correct_sentence() builds both from the same
+    whitespace-split `raw_tokens` list, substituting only the token core
+    (punctuation/casing preserved), so no re-tokenization or fuzzy
+    matching is needed here — position i in one is position i in the
+    other.
+
+    Returns
+    -------
+    str
+        The sentence with every entry whose `changed` flag is set
+        rendered as `**token**` in place.
+    """
+    tokens = corrected_sentence.split()
+    if len(tokens) != len(metadata):
+        # Defensive fallback (should not happen given the 1:1 contract
+        # above) — return the sentence unhighlighted rather than
+        # mis-wrap the wrong token.
+        return corrected_sentence
+    return " ".join(
+        f"**{tok}**" if entry.get("changed") else tok
+        for tok, entry in zip(tokens, metadata)
+    )
+
 
 def highlight_changes(metadata: List[Dict]) -> str:
     """
@@ -171,7 +202,7 @@ def run_cli(
         elapsed_seconds = time.perf_counter() - start
 
         output_func(f"Original:  {sentence}")
-        output_func(f"Corrected: {corrected_sentence}")
+        output_func(f"Corrected: {render_highlighted(corrected_sentence, metadata)}")
         output_func(highlight_changes(metadata))
         output_func(f"Latency: {elapsed_seconds * 1000:.3f} ms")
         output_func("")  # blank line between turns

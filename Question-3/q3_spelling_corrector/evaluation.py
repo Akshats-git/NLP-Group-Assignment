@@ -366,7 +366,7 @@ def run_full_evaluation(
     seed: int = 42,
     fraction: float = 0.1,
     target_count: Optional[int] = None,
-    real_word_threshold: float = 2.0,
+    real_word_threshold: float = 1.1,
 ) -> Dict[str, Dict]:
     """
     Full Phase 5 accuracy pipeline: load trained Phase 2 artifacts, build

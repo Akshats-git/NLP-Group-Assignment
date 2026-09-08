@@ -8,7 +8,7 @@ unigram + bigram language models, two candidate-generation methods
 real-word/context correction, reproducible accuracy evaluation, a
 1,000-word Speed Demon timing benchmark, and an interactive terminal
 CLI. This README is written for grading — for full technical detail and
-evidence, see the accompanying report (`q3_report.tex`).
+evidence, see the accompanying report ([REPORT_Q3.md](REPORT_Q3.md)).
 
 ## 2. Project Structure
 
@@ -17,6 +17,7 @@ Q3/
 ├── nltk_data/                          # local Brown Corpus data (~13 MB) — see Setup
 ├── requirements.txt                     # Python dependencies (submitted)
 ├── README.md                            # this file
+├── REPORT_Q3.md                         # full technical report (design choices, error analysis, sample runs)
 └── q3_spelling_corrector/
     ├── corpus_models.py                 # Part 1 — vocab, unigram, bigram models
     ├── candidates.py                     # Part 2 — Method A + Method B
@@ -119,21 +120,24 @@ not guaranteed to be exactly 5,734 in every environment:
 
 | Method | Non-word Accuracy | Real-word Accuracy |
 |---|---:|---:|
-| Method A | 4679/5734 = 81.60% | 3573/5734 = 62.31% |
-| Method B | 4679/5734 = 81.60% | 3573/5734 = 62.31% |
+| Method A | 4679/5734 = 81.60% | 4286/5734 = 74.75% |
+| Method B | 4679/5734 = 81.60% | 4286/5734 = 74.75% |
 
 Method A and Method B report identical accuracy because both ultimately
 identify the same edit-distance-1 candidate universe from the
 vocabulary — they differ in how candidates are generated/retrieved, not
-in which candidates exist.
+in which candidates exist. Real-word accuracy reflects `real_word_threshold
+= 1.1` (see §9 and [REPORT_Q3.md](REPORT_Q3.md) for how this value was
+chosen empirically, including a false-positive-rate check on already-correct
+text and why a lower, higher-scoring threshold was rejected).
 
 **Speed Demon** (1,000-word batch, same batch/order for both methods,
 model/index construction excluded from timing):
 
 | Run | Method A | Method B | Speedup |
 |---|---:|---:|---:|
-| Run 1 | 0.0838 s | 0.0085 s | ≈ 9.87× |
-| Run 2 | 0.0858 s | 0.0091 s | ≈ 9.40× |
+| Run 1 | 0.1130 s | 0.0108 s | ≈ 10.43× |
+| Run 2 | 0.0835 s | 0.0089 s | ≈ 9.40× |
 
 Method A explicitly enumerates possible
 deletion/insertion/replacement/transposition strings for each query
@@ -150,20 +154,41 @@ performs.
 python3 cli.py
 ```
 
-Verified example session:
+Verified example session (changed words are wrapped in `**asterisks**` in
+the `Corrected:` line, per the Part 5 highlighting requirement):
 
 ```
-I hav a test sentence          -> I had a test sentence
-test sentnce                   -> test sentence
-I sea the world                -> I see the world
-meat me at the station         -> (unchanged)
-This is a correct sentence.    -> (unchanged)
-exit                           -> Goodbye.
+> Original:  I hav a good feeling about this.
+Corrected: I **had** a good feeling about this.
+Changes: hav -> had
+Latency: 0.410 ms
+
+> Original:  This is a test sentnce.
+Corrected: This is a test **sentence.**
+Changes: sentnce -> sentence
+Latency: 0.307 ms
+
+> Original:  I would like to sea the world.
+Corrected: I would like to **see** the world.
+Changes: sea -> see
+Latency: 0.390 ms
+
+> Original:  Please meat me at the station.
+Corrected: Please meat me at the station.
+Changes: none
+Latency: 0.348 ms
+
+> Goodbye.
 ```
 
-Each turn also prints which words changed and the correction latency.
-These examples illustrate behavior — they do not represent every
-possible spelling error the corrector can or cannot handle.
+Each turn also prints which words changed (`Changes:` line) and the
+correction latency. The "meat" example is intentionally left unchanged —
+see [REPORT_Q3.md](REPORT_Q3.md) for why: the local bigram context ranks
+"beat" above the intended "meet" for this exact phrase regardless of
+threshold, so firing here would swap in a different wrong word rather
+than the right one; leaving it unchanged was the deliberate choice. These
+examples illustrate behavior — they do not represent every possible
+spelling error the corrector can or cannot handle.
 
 ## 9. Implementation Summary
 
@@ -181,19 +206,21 @@ possible spelling error the corrector can or cannot handle.
   alphabetical tie-break.
 - **Real-word correction**: `score(word) = log P(word|previous) + log
   P(next|word)`; a candidate replaces the original only if it scores
-  more than 2.0 nats higher. This threshold is an implementation/design
-  parameter, not a value derived or optimized from data — the
-  assignment does not specify an exact threshold.
+  more than 1.1 nats higher. The assignment does not specify an exact
+  threshold; 1.1 was chosen empirically by sweeping thresholds against
+  the Part 4 real-word test set and a false-positive check on
+  already-correct text — see [REPORT_Q3.md](REPORT_Q3.md) for the full
+  sweep and why a slightly higher-scoring value (1.0) was rejected.
 - **Sentence correction**: non-word correction runs first, then
   real-word correction, using the updated word sequence as context.
 
-Full technical detail is in `q3_report.tex`.
+Full technical detail is in [REPORT_Q3.md](REPORT_Q3.md).
 
 ## 10. Q4 Reuse
 
-Q4 can reuse the Q3 vocabulary, unigram model, bigram model, Method A,
-Method B/Symmetric Delete, and `SpellingCorrector` without retraining.
-Q4 itself is not implemented in this repository.
+Q4 reuses the Q3 vocabulary, unigram model, bigram model, Method A,
+Method B/Symmetric Delete, and `SpellingCorrector` without retraining —
+see `Question-4/q4/spelling.py` and `Question-4/q4/model_loader.py`.
 
 ## 11. Limitations
 

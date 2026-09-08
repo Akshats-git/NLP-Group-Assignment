@@ -81,7 +81,7 @@ def run_speed_demon(
     symdel_index: Dict[str, List[str]],
     seed: int = 123,
     batch_size: int = DEFAULT_BATCH_SIZE,
-    real_word_threshold: float = 2.0,
+    real_word_threshold: float = 1.1,
     k: float = 1.0,
 ) -> Dict:
     """

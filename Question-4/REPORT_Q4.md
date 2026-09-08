@@ -392,6 +392,9 @@ time across 32 tokens, 3 grammar triggers and a 3.2 ms final analysis.
 - Very short fragments score well and are called grammatical. A one word sentence such as
   `mccormack` has almost nothing to average over, so its per-word score is dominated by
   the sentence-end probability and lands above the floor.
+- The first parse in a process pays about 200 ms to build the grammar's rule index, and a
+  cold end-of-passage analysis comes in around 700 ms as a result. Every analysis after
+  that in the same session runs in 15 to 50 ms.
 - Add-k is a weak smoother. It is what the brief asks for, and the perplexities in
   section 1.3 show what it costs compared to the Witten-Bell model Q1 uses for the same
   corpus.

@@ -35,6 +35,19 @@ Q3_SRC = REPO_ROOT / "Question-3" / "q3_spelling_corrector"
 Q1_MODEL_PATH = Q1_ROOT / "models" / "q1_english.pkl"
 Q3_MODEL_PATH = Q3_SRC / "models" / "q3_language_models.pkl"
 
+# Q4-owned fallback cache: used ONLY when Q1's/Q3's own artifact is missing.
+# Q4 must never write into Question-1/models/ or Question-3/.../models/ —
+# those directories belong to Q1 and Q3 respectively, and writing a
+# Q4-trained substitute there (even a well-intentioned "train it if
+# missing" fallback) risks silently replacing the real, fuller-schema
+# artifact those questions' own scripts produce with a slimmer one Q4
+# happens to need, which then breaks Q1's/Q3's own code the next time it
+# tries to load its own file. See REPORT_Q4.md for the incident this
+# guarded against.
+Q4_MODEL_CACHE_DIR = REPO_ROOT / "Question-4" / "models"
+Q4_Q1_CACHE_PATH = Q4_MODEL_CACHE_DIR / "q1_english_cache.pkl"
+Q4_Q3_CACHE_DIR = Q4_MODEL_CACHE_DIR / "q3_cache"
+
 for path in (str(Q1_ROOT), str(Q3_SRC)):
     if path not in sys.path:
         sys.path.insert(0, path)
@@ -46,7 +59,12 @@ def _train_q1_english() -> dict[str, Any]:
     from q1.segment import DecoderConfig
     from q1.tagger import HMMTagger, TaggerConfig, tagged_pairs
 
-    print("[Q4] Training Q1 English model on Brown corpus...")
+    print(
+        "[Q4] Question-1/models/q1_english.pkl not found — training a "
+        "Q4-local fallback copy instead (cached at "
+        f"{Q4_Q1_CACHE_PATH}). For a real 'reuse Q1's trained model' run, "
+        "run Question-1/scripts/run_q1.py first."
+    )
     corpus = load_brown(tagset="universal")
     lm = NgramLM(order=3, smoothing="witten_bell").fit(s.words for s in corpus.train)
     train_vocab = vocabulary(corpus.train)
@@ -56,7 +74,6 @@ def _train_q1_english() -> dict[str, Any]:
     train_pairs = tagged_pairs(corpus.train)
     tagger = HMMTagger(TaggerConfig(order=3)).fit(train_pairs)
 
-    Q1_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "language": "English",
         "corpus": "Brown",
@@ -66,7 +83,13 @@ def _train_q1_english() -> dict[str, Any]:
         "tagger": tagger,
         "train_vocab": train_vocab,
     }
-    with Q1_MODEL_PATH.open("wb") as f:
+    # Cached under Question-4/models/, never under Question-1/models/ —
+    # that path is Q1's own, and this payload does not match the schema
+    # Q1's own scripts save there (no tagger_config/morph_tagger/
+    # baseline_tagger), so writing it to Q1's path would corrupt Q1's
+    # artifact for anyone who loads it expecting the full schema.
+    Q4_Q1_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with Q4_Q1_CACHE_PATH.open("wb") as f:
         pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
     return payload
 
@@ -75,14 +98,26 @@ def load_q1_models() -> dict[str, Any]:
     if Q1_MODEL_PATH.exists():
         with Q1_MODEL_PATH.open("rb") as f:
             return pickle.load(f)
+    if Q4_Q1_CACHE_PATH.exists():
+        with Q4_Q1_CACHE_PATH.open("rb") as f:
+            return pickle.load(f)
     return _train_q1_english()
 
 
 def load_q3_models() -> dict[str, Any]:
     from corpus_models import build_and_save_all, load_models
-    if not Q3_MODEL_PATH.exists():
-        build_and_save_all(model_dir=Q3_MODEL_PATH.parent)
-    return load_models(model_dir=Q3_MODEL_PATH.parent)
+    if Q3_MODEL_PATH.exists():
+        return load_models(model_dir=Q3_MODEL_PATH.parent)
+    # Same reasoning as load_q1_models(): never write Q3's real path.
+    if not Q4_Q3_CACHE_DIR.exists() or not (Q4_Q3_CACHE_DIR / "q3_language_models.pkl").exists():
+        print(
+            "[Q4] Question-3/q3_spelling_corrector/models/q3_language_models.pkl "
+            f"not found — building a Q4-local fallback copy instead (cached at "
+            f"{Q4_Q3_CACHE_DIR}). For a real 'reuse Q3's trained model' run, "
+            "run Question-3/q3_spelling_corrector/corpus_models.py first."
+        )
+        build_and_save_all(model_dir=Q4_Q3_CACHE_DIR)
+    return load_models(model_dir=Q4_Q3_CACHE_DIR)
 
 
 _CACHE: dict[str, Any] | None = None
@@ -110,7 +145,10 @@ def load_all_models() -> dict[str, Any]:
         vocab_size=q3["vocab_size"],
         symdel_index=symdel,
         method="B",
-        real_word_threshold=2.0,
+        # Matches Q3's own chosen default (see Question-3/REPORT_Q3.md §3.1)
+        # rather than a second, independently hardcoded value — this is
+        # meant to be Q3's corrector reused as-is, not a re-tuned copy.
+        real_word_threshold=1.1,
         k=q3["k"],
     )
 

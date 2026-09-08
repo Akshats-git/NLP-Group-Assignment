@@ -10,25 +10,25 @@ Typed text as it arrives
 
 Live alerts
   [SPELL-ALERT] Spelling: 'piedro' -> suggest 'pedro'  (0.03 ms)
-  [SEGMENT-ALERT] Split 'contemptat' -> contempt + at [NOUN, ADP]  (1.34 ms)
-  [SEGMENT-ALERT] Split 'foundthat' -> found + that [VERB, PRON]  (1.06 ms)
-  [SEGMENT-ALERT] Split 'usefulin' -> useful + in [ADJ, ADP]  (0.76 ms)
-  [GRAMMAR-ALERT] window perplexity 2242, real-word suggestion met -> let  (0.64 ms)
-  [SEGMENT-ALERT] Split 'clothesthat' -> clothes + that [NOUN, ADP]  (1.62 ms)
-  [SEGMENT-ALERT] Split 'hadat' -> had + at [VERB, ADP]  (0.27 ms)
-  [GRAMMAR-ALERT] window perplexity 1456, real-word suggestion or -> for  (0.66 ms)
-  [SEGMENT-ALERT] Split 'andwith' -> and + with [CONJ, ADP]  (0.62 ms)
-  [SEGMENT-ALERT] Split 'expressionsas' -> expressions + as [NOUN, ADP]  (2.38 ms)
-  [SEGMENT-ALERT] Split '"Takethat' -> take + that [VERB, PRON]  (0.66 ms)
+  [SEGMENT-ALERT] Split 'contemptat' -> contempt + at [NOUN, ADP]  (0.97 ms)
+  [SEGMENT-ALERT] Split 'foundthat' -> found + that [VERB, PRON]  (0.77 ms)
+  [SEGMENT-ALERT] Split 'usefulin' -> useful + in [ADJ, ADP]  (0.56 ms)
+  [GRAMMAR-ALERT] window perplexity 2242, real-word suggestion met -> let  (0.61 ms)
+  [SEGMENT-ALERT] Split 'clothesthat' -> clothes + that [NOUN, ADP]  (1.08 ms)
+  [SEGMENT-ALERT] Split 'hadat' -> had + at [VERB, ADP]  (0.25 ms)
+  [GRAMMAR-ALERT] window perplexity 1456, real-word suggestion or -> for  (0.55 ms)
+  [SEGMENT-ALERT] Split 'andwith' -> and + with [CONJ, ADP]  (0.52 ms)
+  [SEGMENT-ALERT] Split 'expressionsas' -> expressions + as [NOUN, ADP]  (1.57 ms)
+  [SEGMENT-ALERT] Split '"Takethat' -> take + that [VERB, PRON]  (0.62 ms)
   [SPELL-ALERT] Spelling: 'gourds' -> suggest 'gourd'  (0.02 ms)
-  [SPELL-ALERT] Spelling: 'figs' -> suggest 'fits'  (0.03 ms)
-  [GRAMMAR-ALERT] window perplexity 4076, real-word suggestion eat -> at, now -> new, fits -> its  (0.49 ms)
-  [SEGMENT-ALERT] Split 'haveeven' -> have + even [VERB, ADV]  (0.80 ms)
-  [SPELL-ALERT] Spelling: 'piedro' -> suggest 'pedro'  (0.02 ms)
-  [SEGMENT-ALERT] Split 'awhole' -> a + whole [DET, ADJ]  (0.44 ms)
-  [SEGMENT-ALERT] Split 'hisold' -> his + old [DET, ADJ]  (0.41 ms)
-  [GRAMMAR-ALERT] window perplexity 7691, real-word suggestion what -> that, him -> his  (0.48 ms)
-  [GRAMMAR-ALERT] window perplexity 32426  (0.43 ms)
+  [SPELL-ALERT] Spelling: 'figs' -> suggest 'fits'  (0.02 ms)
+  [GRAMMAR-ALERT] window perplexity 4076, real-word suggestion eat -> at, now -> new, fits -> its  (0.46 ms)
+  [SEGMENT-ALERT] Split 'haveeven' -> have + even [VERB, ADV]  (0.55 ms)
+  [SPELL-ALERT] Spelling: 'piedro' -> suggest 'pedro'  (0.01 ms)
+  [SEGMENT-ALERT] Split 'awhole' -> a + whole [DET, ADJ]  (0.37 ms)
+  [SEGMENT-ALERT] Split 'hisold' -> his + old [DET, ADJ]  (0.36 ms)
+  [GRAMMAR-ALERT] window perplexity 7691, real-word suggestion what -> that, him -> his  (0.47 ms)
+  [GRAMMAR-ALERT] window perplexity 32426  (0.39 ms)
 
 Corrected text
   1. pedro was taunted and treated with contempt at home and abroad
@@ -58,7 +58,7 @@ Live alerts against the final verdict
 
 Latency
   alerts fired            : {'SEGMENT': 11, 'SPELL': 4, 'GRAMMAR': 5}
-  per-token check         : 0.12 ms average over 144 tokens
-  per-trigger check       : 0.54 ms average over 13 triggers
-  end-of-passage analysis : 15.7 ms for 6 sentences
-  total                   : 40.8 ms
+  per-token check         : 0.10 ms average over 144 tokens
+  per-trigger check       : 0.50 ms average over 13 triggers
+  end-of-passage analysis : 13.6 ms for 6 sentences
+  total                   : 34.5 ms

@@ -9,8 +9,8 @@ trigger N = 10, merge probability p = 0.08, perplexity threshold = 17344
    chosen method            : {'trigram': 101, 'pcfg': 21, 'bigram': 6}
    verdicts                 : {'grammatical': 107, 'borderline': 11, 'ungrammatical': 10}
    live vs final            : both 18, live only 78, final only 3, clean 29, agreement 37%
-   per-token latency        : mean 0.15 ms, p95 1.12 ms, max 11.48 ms
-   per-trigger latency      : mean 0.53 ms, p95 0.66 ms
+   per-token latency        : mean 0.19 ms, p95 1.06 ms, max 21.63 ms
+   per-trigger latency      : mean 0.74 ms, p95 1.51 ms
 
 2. Merge probability against segmentation alerts
    p      segment alerts  per 100 words
@@ -31,4 +31,3 @@ trigger N = 10, merge probability p = 0.08, perplexity threshold = 17344
    mapped tags match the treebank tag : 58.2%
    parse rate with mapped tags        : 39.0%
    parse rate with the treebank tags  : 42.5%
-

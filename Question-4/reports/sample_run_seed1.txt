@@ -9,24 +9,24 @@ Typed text as it arrives
   The brothers continued to help each other during their studies, sharing a jointpurse , lodging together in thedormitoryand dining together at the homeof their aunt . They supplemented their income by smallgovernment assistance , by tutoring and economizing wherever they could . So impressive were those serious years of study at the universitythat Hans later wrote , `` to be perfectly free , the young man mustrevelin the great kingdom of thought and imagination ; ; there is a struggle there , in which , ifhe falls , it is easy for him torise again , there is freedom of utterance there , which drawsafter it no irreparable consequences on society . I lived in this onward-drivingcontestwhere each day overcame a newdifficulty , gained a new truth , or banisheda previous error '' . He openly proclaimed his pleasure inlecturingand writing about science .
 
 Live alerts
-  [SEGMENT-ALERT] Split 'jointpurse' -> joint + purse [ADJ, NOUN]  (21.64 ms)
-  [SEGMENT-ALERT] Split 'thedormitoryand' -> the + dormitory + and [DET, NOUN, CONJ]  (3.47 ms)
-  [SEGMENT-ALERT] Split 'homeof' -> home + of [NOUN, ADP]  (0.39 ms)
-  [SEGMENT-ALERT] Split 'smallgovernment' -> small + government [ADJ, NOUN]  (3.39 ms)
-  [GRAMMAR-ALERT] window perplexity 587, real-word suggestion so -> do  (0.49 ms)
-  [SEGMENT-ALERT] Split 'universitythat' -> university + that [NOUN, ADP]  (2.67 ms)
-  [GRAMMAR-ALERT] window perplexity 109, real-word suggestion hans -> has  (0.60 ms)
-  [SEGMENT-ALERT] Split 'mustrevelin' -> must + revel + in [VERB, VERB, ADP]  (1.62 ms)
-  [SEGMENT-ALERT] Split 'ifhe' -> if + he [ADP, PRON]  (0.16 ms)
-  [GRAMMAR-ALERT] window perplexity 89, real-word suggestion falls -> calls  (0.61 ms)
-  [SEGMENT-ALERT] Split 'torise' -> to + rise [PRT, VERB]  (0.46 ms)
-  [SEGMENT-ALERT] Split 'drawsafter' -> draws + after [VERB, ADP]  (1.34 ms)
-  [GRAMMAR-ALERT] window perplexity 485, real-word suggestion on -> of  (0.72 ms)
-  [SEGMENT-ALERT] Split 'onward-drivingcontestwhere' -> on + ward + driving + contest + where [ADP, NOUN, VERB, NOUN, ADV]  (32.46 ms)
-  [GRAMMAR-ALERT] window perplexity 1508, real-word suggestion on -> one  (0.55 ms)
-  [SEGMENT-ALERT] Split 'newdifficulty' -> new + difficulty [ADJ, NOUN]  (2.16 ms)
-  [SEGMENT-ALERT] Split 'banisheda' -> banished + a [VERB, DET]  (1.02 ms)
-  [SEGMENT-ALERT] Split 'inlecturingand' -> in + lecturing + and [ADP, VERB, CONJ]  (2.60 ms)
+  [SEGMENT-ALERT] Split 'jointpurse' -> joint + purse [ADJ, NOUN]  (54.57 ms)
+  [SEGMENT-ALERT] Split 'thedormitoryand' -> the + dormitory + and [DET, NOUN, CONJ]  (6.17 ms)
+  [SEGMENT-ALERT] Split 'homeof' -> home + of [NOUN, ADP]  (0.92 ms)
+  [SEGMENT-ALERT] Split 'smallgovernment' -> small + government [ADJ, NOUN]  (5.55 ms)
+  [GRAMMAR-ALERT] window perplexity 587, real-word suggestion so -> do  (1.16 ms)
+  [SEGMENT-ALERT] Split 'universitythat' -> university + that [NOUN, ADP]  (4.77 ms)
+  [GRAMMAR-ALERT] window perplexity 109, real-word suggestion hans -> has  (1.45 ms)
+  [SEGMENT-ALERT] Split 'mustrevelin' -> must + revel + in [VERB, VERB, ADP]  (3.22 ms)
+  [SEGMENT-ALERT] Split 'ifhe' -> if + he [ADP, PRON]  (0.44 ms)
+  [GRAMMAR-ALERT] window perplexity 89, real-word suggestion falls -> calls  (1.45 ms)
+  [SEGMENT-ALERT] Split 'torise' -> to + rise [PRT, VERB]  (1.05 ms)
+  [SEGMENT-ALERT] Split 'drawsafter' -> draws + after [VERB, ADP]  (2.50 ms)
+  [GRAMMAR-ALERT] window perplexity 485, real-word suggestion on -> of  (1.31 ms)
+  [SEGMENT-ALERT] Split 'onward-drivingcontestwhere' -> on + ward + driving + contest + where [ADP, NOUN, VERB, NOUN, ADV]  (17.89 ms)
+  [GRAMMAR-ALERT] window perplexity 1508, real-word suggestion on -> one  (1.19 ms)
+  [SEGMENT-ALERT] Split 'newdifficulty' -> new + difficulty [ADJ, NOUN]  (4.07 ms)
+  [SEGMENT-ALERT] Split 'banisheda' -> banished + a [VERB, DET]  (2.09 ms)
+  [SEGMENT-ALERT] Split 'inlecturingand' -> in + lecturing + and [ADP, VERB, CONJ]  (4.77 ms)
 
 Corrected text
   1. the brothers continued to help each other during their studies sharing a joint purse lodging together in the dormitory and dining together at the home of their aunt
@@ -56,7 +56,7 @@ Live alerts against the final verdict
 
 Latency
   alerts fired            : {'SEGMENT': 13, 'SPELL': 0, 'GRAMMAR': 5}
-  per-token check         : 0.61 ms average over 144 tokens
-  per-trigger check       : 0.55 ms average over 14 triggers
-  end-of-passage analysis : 17.1 ms for 6 sentences
-  total                   : 113.6 ms
+  per-token check         : 0.95 ms average over 144 tokens
+  per-trigger check       : 1.25 ms average over 14 triggers
+  end-of-passage analysis : 102.1 ms for 6 sentences
+  total                   : 258.2 ms

@@ -5,3 +5,9 @@ __pycache__/
 
 # Rebuilt on first run from the Brown train split, too large to keep in git.
 models/q4_grammar_lms.pkl
+
+# Fallback caches used only when Q1's/Q3's own trained artifact is
+# missing (see model_loader.py) — never the real submitted artifact,
+# so not committed. Their presence means Q1/Q3 weren't run first.
+models/q1_english_cache.pkl
+models/q3_cache/

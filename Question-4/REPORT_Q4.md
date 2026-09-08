@@ -21,7 +21,13 @@ Every number below comes from a script in `scripts/`, and the raw output is kept
 ## Which model comes from where
 
 Nothing from Question 1 or Question 3 is retrained while Q4 runs. `q4/model_loader.py`
-loads all of it once and hands the same objects to every sub-system.
+loads all of it once and hands the same objects to every sub-system. If Q1's or Q3's own
+artifact is missing (e.g. Q4 is run before either has been trained), `model_loader.py`
+falls back to training a local copy for that run — but caches it under `Question-4/models/`,
+never back into `Question-1/models/` or `Question-3/.../models/`, so a fallback run can
+never silently overwrite the real artifact those questions' own scripts produce with a
+different-schema substitute. Run Q1's and Q3's own setup first (see the top-level README)
+so Q4 reuses the real trained models rather than this fallback.
 
 | Model | Trained in | Used for |
 | --- | --- | --- |
@@ -33,7 +39,9 @@ loads all of it once and hands the same objects to every sub-system.
 | Pruned Penn Treebank PCFG, 10,603 productions | Q4, treebank sample | constituency parses |
 
 The beam decoder runs with the settings Q1 selected and persisted alongside its models, so
-Q4 does not re-choose them: maximum word length 19, beam width 8, alpha and beta both 1.0.
+Q4 does not re-choose them: maximum word length 19, beam width 4 (Q1's dev-set sweep found
+widths 4/8/16 tie to within 0.001 token F1 on English, so whichever ties first wins — see
+Question-1/REPORT_Q1.md), alpha and beta both 1.0.
 
 The two Q4 n-gram models are the only ones trained here. They are cached in
 `models/q4_grammar_lms.pkl`, which is rebuilt on first run in about 13 seconds and left
@@ -171,25 +179,29 @@ the SymDel index and the batch itself are all prepared before timing starts.
 
 | Layer | Corrupted batch | Ordinary words |
 | --- | --- | --- |
-| Segmentation and spelling, per word | 0.807 ms | 0.386 ms |
-| Grammar trigger, per window of 10 | 0.022 ms | 0.262 ms |
-| Grammar trigger, per word | 0.002 ms | 0.026 ms |
+| Segmentation and spelling, per word | 1.723 ms | 0.785 ms |
+| Grammar trigger, per window of 10 | 0.049 ms | 0.577 ms |
+| Grammar trigger, per word | 0.005 ms | 0.058 ms |
 
-On the corrupted batch the per-token layer costs 0.805 ms per word more than the grammar
-layer. The ratio of 369 looks dramatic but it is measuring a worst case at both ends.
-Every word in that batch is out of vocabulary, which is the most expensive case for
+On the corrupted batch the per-token layer costs about 1.72 ms per word more than the
+grammar layer. The ratio (≈351x) looks dramatic but it is measuring a worst case at both
+ends. Every word in that batch is out of vocabulary, which is the most expensive case for
 segmentation because the beam decoder has to run, and the cheapest case for the grammar
 check because the real-word pass skips unknown words without generating a single
 candidate. The control batch of ordinary vocabulary words is the fairer picture: the
-per-token layer drops to 0.386 ms because known short words skip the decoder entirely,
-and the grammar check climbs to 0.262 ms per window because it now has real words to
-generate candidates for.
+per-token layer drops to well under half because known short words skip the decoder
+entirely, and the grammar check climbs per window because it now has real words to
+generate candidates for. (Absolute numbers here are from a shared, loaded machine and will
+vary run to run — see the two consecutive runs of this same script in
+`reports/speed_demon.txt`'s history — but the ~2x gap between the corrupted and ordinary
+batches, and the two-orders-of-magnitude gap between the per-token and per-trigger layers,
+reproduce consistently.)
 
-The conclusion is that no throttling is needed. Even at the worst case of 0.807 ms per
+The conclusion is that no throttling is needed. Even at the worst case of ~1.7 ms per
 word, a typist at 120 words per minute leaves 500 ms between words, so the check uses
-about 0.16 percent of the available time. The measured live figures agree: 0.15 ms mean
-per token over 20 passages, with a 95th percentile of 1.12 ms and a worst single token of
-11.5 ms, which is one very long merged token that the beam decoder had to work through.
+well under 1 percent of the available time. The measured live figures agree: 0.19 ms mean
+per token over 20 passages, with a 95th percentile of 1.06 ms and a worst single token of
+21.6 ms, which is one very long merged token that the beam decoder had to work through.
 Throttling the segmentation check to the grammar trigger would only delay the split of a
 merged token by up to ten words and would save nothing that matters.
 
